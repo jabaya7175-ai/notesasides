@@ -57,10 +57,10 @@ ${panel('Gothic Revival', '1740–1900', 'schinkel', 'Gothic Cathedral by the Wa
 <h2>Reading the Pantheon</h2>
 <p>Panini painted the Pantheon from the doorway, so that we stand where an eighteenth-century visitor would have stood. Tap the numbers.</p>
 <figure class="hotspots"><div class="hs-img"><img src="${img('pantheon', 1600)}" alt="Interior of the Pantheon in Rome: a coffered dome with a round opening at the top, columns and niches around the drum, visitors on a patterned marble floor.">
-<button class="hs" style="left:50%;top:5%" aria-label="Detail 1">1</button>
+<button class="hs" style="left:56%;top:10%" aria-label="Detail 1">1</button>
 <button class="hs" style="left:28%;top:18%" aria-label="Detail 2">2</button>
-<button class="hs" style="left:79%;top:52%" aria-label="Detail 3">3</button>
-<button class="hs" style="left:22%;top:62%" aria-label="Detail 4">4</button>
+<button class="hs" style="left:8%;top:64%" aria-label="Detail 3">3</button>
+<button class="hs" style="left:73%;top:74%" aria-label="Detail 4">4</button>
 <button class="hs" style="left:52%;top:90%" aria-label="Detail 5">5</button>
 </div><figcaption>Interior of the Pantheon, Rome, Giovanni Paolo Panini, c. 1734. National Gallery of Art, Washington.</figcaption>
 <ol class="hs-notes">
