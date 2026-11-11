@@ -573,6 +573,11 @@ body.previewing #preview{display:block}
 .bg-reset{all:unset;cursor:pointer;margin-top:8px;font-size:13px;color:var(--muted)}
 .bg-reset:hover{color:var(--ink)}
 #v-desk.lightboard .tx-body{color:#1E2836}
+/* Groups */
+.group-box{position:absolute;border:calc(1.5px * var(--inv,1)) dashed #3B9BFF;border-radius:calc(4px * var(--inv,1));pointer-events:none;z-index:99998}
+.group-box[hidden]{display:none}
+.desk-world.gsel .it.sel{outline-color:rgba(59,155,255,.45)}
+.desk-world.gsel .it.sel > .rz{display:none}
 /* Text size box in the selection bar */
 .desk-sel .fsz{display:inline-flex;align-items:center;gap:2px;padding:0;letter-spacing:0;text-transform:none;color:var(--ink)}
 .desk-sel .fsz input{width:46px;font:15px var(--serif);background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:3px 4px;text-align:center;-moz-appearance:textfield}

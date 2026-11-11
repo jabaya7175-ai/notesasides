@@ -77,6 +77,7 @@ export function initDesk(ctx) {
     if (dirty.items.size) {
       const ids = [...dirty.items]; dirty.items.clear();
       ids.forEach((id) => { const it = byId(id); if (it) place(it); });
+      if (world.classList.contains('gsel')) drawGroupBox();
       // updateLinks below always refreshes strings tied to passages.
       updateLinks(new Set(ids));
     }
@@ -396,8 +397,25 @@ export function initDesk(ctx) {
     if (ink && ink.id !== selected) setInk(null);
     ids.forEach((i) => { const it = byId(i); if (it && (it.z || 0) < zTop && ids.length === 1) { it.z = ++zTop; place(it); } });
     if (!same) { if (linkWas) drawLinks(); renderSelBar(); }
+    drawGroupBox();
   }
   const select = (id) => setSel(id ? [id] : []);
+  // Groups: pieces sharing it.group are selected and moved together.
+  const groupIds = (g) => board.items.filter((i) => i.group === g).map((i) => i.id);
+  const withGroups = (ids) => [...new Set(ids.flatMap((id) => { const g = byId(id)?.group; return g ? groupIds(g) : [id]; }))];
+  const selGroup = () => { const gs = new Set([...sel].map((i) => byId(i)?.group)); if (gs.size !== 1) return null; const g = [...gs][0]; return g && groupIds(g).length === sel.size ? g : null; };
+  const pick = (it) => setSel(it.group ? groupIds(it.group) : [it.id]);
+  function drawGroupBox() {
+    let box = $('deskGroupBox');
+    if (!box) { box = document.createElement('div'); box.id = 'deskGroupBox'; box.className = 'group-box'; world.appendChild(box); }
+    const g = sel.size > 1 && selGroup(); world.classList.toggle('gsel', !!g);
+    if (!g) { box.hidden = true; return; }
+    const its = [...sel].map(byId).filter(Boolean);
+    const x1 = Math.min(...its.map((i) => i.x)), y1 = Math.min(...its.map((i) => i.y)), x2 = Math.max(...its.map((i) => i.x + i.w)), y2 = Math.max(...its.map((i) => i.y + i.h));
+    Object.assign(box.style, { left: x1 - 10 + 'px', top: y1 - 10 + 'px', width: x2 - x1 + 20 + 'px', height: y2 - y1 + 20 + 'px' }); box.hidden = false;
+  }
+  function groupSel() { if (sel.size < 2) return; const g = uid(); sel.forEach((id) => { const it = byId(id); if (it) it.group = g; }); drawGroupBox(); renderSelBar(); save(); toast(`Grouped ${sel.size} pieces`); }
+  function ungroupSel() { sel.forEach((id) => { const it = byId(id); if (it) delete it.group; }); drawGroupBox(); renderSelBar(); save(); toast('Ungrouped'); }
   function toggleSel(id) { const ids = [...sel]; setSel(sel.has(id) ? ids.filter((i) => i !== id) : [...ids, id]); }
   function selectLink(id) {
     selected = null; sel = new Set(); selLink = id;
@@ -417,7 +435,8 @@ export function initDesk(ctx) {
       bar.querySelector('[data-a=taut]').onclick = () => { l.bend = { x: 0, y: 0 }; drawLinks(); save(); };
     } else if (sel.size > 1) {
       const anyUnlocked = [...sel].some((i) => !byId(i)?.locked);
-      bar.innerHTML = `<span>${sel.size} pieces</span><button data-a="lockall" title="Lock or unlock (Ctrl+Shift+L)">${anyUnlocked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock all' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock all'}</button><button data-a="chain" title="Tie them together in the order you selected them">Tie together</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button><em>Shift-click to add or remove</em>`;
+      const g = selGroup();
+      bar.innerHTML = `<span>${g ? 'Group of ' + sel.size : sel.size + ' pieces'}</span>` + (g ? `<button data-a="ungroup" title="Ungroup (Ctrl+Shift+G)"><svg viewBox="0 0 24 24" class="ic"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M7 15v4h4M17 9V5h-4" stroke-dasharray="2 2"/></svg> Ungroup</button>` : `<button data-a="group" title="Group (Ctrl+G)"><svg viewBox="0 0 24 24" class="ic"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M7 15v4h4M17 9V5h-4" stroke-dasharray="2 2"/></svg> Group</button>`) + `<button data-a="lockall" title="Lock or unlock (Ctrl+Shift+L)">${anyUnlocked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock all' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock all'}</button><button data-a="chain" title="Tie them together in the order you selected them">Tie together</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button><em>Shift-click to add or remove</em>`;
       bar.hidden = false;
       bar.querySelector('[data-a=chain]').onclick = () => {
         const ids = [...sel]; let n = 0;
@@ -429,6 +448,9 @@ export function initDesk(ctx) {
       };
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
       bar.querySelector('[data-a=lockall]').onclick = () => toggleLock(anyUnlocked);
+      bar.querySelector('[data-a=group]')?.addEventListener('click', groupSel);
+      bar.querySelector('[data-a=ungroup]')?.addEventListener('click', ungroupSel);
+      if (g) bar.querySelector('em').textContent = 'Double-click a piece to edit it alone';
     } else if (selected) {
       const it = byId(selected);
       let extra = '';
@@ -515,7 +537,8 @@ export function initDesk(ctx) {
   }
   function duplicateSel() {
     const map = new Map(), out = [];
-    [...sel].map(byId).filter(Boolean).forEach((it) => { const c = JSON.parse(JSON.stringify(it)); c.id = uid(); c.x += 48; c.y += 48; c.z = ++zTop; map.set(it.id, c.id); board.items.push(c); mount(c); out.push(c.id); });
+    const gmap = new Map();
+    [...sel].map(byId).filter(Boolean).forEach((it) => { const c = JSON.parse(JSON.stringify(it)); c.id = uid(); c.x += 48; c.y += 48; c.z = ++zTop; if (c.group) { if (!gmap.has(c.group)) gmap.set(c.group, uid()); c.group = gmap.get(c.group); } map.set(it.id, c.id); board.items.push(c); mount(c); out.push(c.id); });
     // Strings between duplicated pieces are duplicated too.
     board.links.filter((l) => map.has(l.a) && map.has(l.b)).forEach((l) => board.links.push({ ...l, id: uid(), a: map.get(l.a), b: map.get(l.b) }));
     drawLinks(); setSel(out); save();
@@ -968,9 +991,11 @@ export function initDesk(ctx) {
       }
       if (e.shiftKey && !e.target.classList.contains('rz')) {
         e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
-        const had = sel.has(it.id); toggleSel(it.id);
+        const members = it.group ? groupIds(it.group) : [it.id], had = sel.has(it.id);
+        setSel(had ? [...sel].filter((i) => !members.includes(i)) : [...sel, ...members]);
         if (had) return; // removed from the selection: nothing to drag
-      } else if (!sel.has(it.id) || e.target.classList.contains('rz')) select(it.id);
+      } else if (e.target.classList.contains('rz')) select(it.id);
+      else if (!sel.has(it.id)) pick(it);
       if (e.target.classList.contains('rz') && !it.locked) {
         e.preventDefault(); eatMouse = true;
         if (it.type === 'text') { it.w = itEl.offsetWidth; it.autoW = false; place(it); }
@@ -1023,7 +1048,7 @@ export function initDesk(ctx) {
       const r = vp.getBoundingClientRect(), x1 = Math.min(e.clientX, drag.sx), y1 = Math.min(e.clientY, drag.sy), x2 = Math.max(e.clientX, drag.sx), y2 = Math.max(e.clientY, drag.sy);
       Object.assign(drag.box.style, { left: x1 - r.left + 'px', top: y1 - r.top + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' });
       const a = toWorld(x1, y1), b = toWorld(x2, y2);
-      const hit = board.items.filter((i) => !i.locked && i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id);
+      const hit = withGroups(board.items.filter((i) => !i.locked && i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id));
       setSel([...new Set([...drag.base, ...hit])]);
     }
     else if (drag.mode === 'resize') {
@@ -1120,18 +1145,31 @@ export function initDesk(ctx) {
     }
     if (d.mode === 'erase' || d.mode === 'lineEnd') { save(); return; }
     if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
-      if (sel.size > 1) select(d.it.id); // a plain click inside a group picks that one piece
-      if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
+      const inGroup = d.it.group && selGroup() === d.it.group;
+      if (!inGroup) {
+        if (sel.size > 1) select(d.it.id); // a plain click inside a multi-selection picks that one piece
+        if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
+      }
     }
     if (d.mode === 'zoomdrag') { if (!d.moved) stepZoom(d.out || e?.altKey ? -1 : 1, d.sx, d.sy); else saveView(); return; }
     if (d.mode === 'pan') saveView(); else if (d.moved && d.mode !== 'marquee') save();
   };
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
   vp.addEventListener('dblclick', (e) => {
+    // The board captures the pointer while pressed, so find what is really under the cursor.
+    const under = document.elementsFromPoint(e.clientX, e.clientY).filter((n) => world.contains(n));
+    const gEl = under.map((n) => n.closest('.it')).find(Boolean), gIt = gEl && byId(gEl.dataset.id);
+    if (gIt?.group && !gIt.locked) {
+      select(gIt.id);
+      const ed = under.map((n) => n.closest('[contenteditable="true"]')).find(Boolean); if (ed) placeCaret(ed, e.clientX, e.clientY);
+      return;
+    }
+    if (gEl) return;
     // Double-click a text box's width handle: back to one line (auto width).
     const rz = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.classList?.contains('rz') && n.closest('.it.text'));
     if (rz) { const it = byId(rz.closest('.it').dataset.id); it.autoW = true; place(it); measureText(it); save(); return; }
-    if (!e.target.closest('.it, .lk') && tool === 'select') { const p = toWorld(e.clientX, e.clientY); const it = addItem('text', p.x, p.y, {}); els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); }
+    const hitPiece = document.elementsFromPoint(e.clientX, e.clientY).some((n) => n.closest?.('.it, .lk') && world.contains(n));
+    if (!hitPiece && tool === 'select') { const p = toWorld(e.clientX, e.clientY); const it = addItem('text', p.x, p.y, {}); els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); }
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
@@ -1150,6 +1188,7 @@ export function initDesk(ctx) {
     if (typing) return;
     if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); if (e.shiftKey) ungroupSel(); else if (sel.size > 1 && !selGroup()) groupSel(); return; }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L') && sel.size) { e.preventDefault(); toggleLock([...sel].some((i) => !byId(i)?.locked)); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && (sel.size || selLink)) { e.preventDefault(); removeSelected(); }
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1765,7 +1804,7 @@ export function initDesk(ctx) {
     if (board?.id === id) { applyView(); renderTabs(); return; }
     const { data, error } = await sb.from('boards').select('*').eq('id', id).single();
     if (error || !data) { toast('Board not found'); location.hash = '#/desk'; return; }
-    board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove());
+    board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove()); world.classList.remove('gsel');
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
     board.items.forEach((i) => { if (i.type === 'sheet' && i.collapsible && /class="ts"/.test(i.html || '')) upgradeTranscript(i); });
