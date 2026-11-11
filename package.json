@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
-    "astro": "^7.4.10"
+    "astro": "^7.4.10",
+    "pdfjs-dist": "^4.10.38"
   }
 }

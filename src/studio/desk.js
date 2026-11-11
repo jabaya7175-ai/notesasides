@@ -15,7 +15,16 @@ export const PAPER = {
   letter: ['Letter', 8.5, 11], legal: ['Legal', 8.5, 14], half: ['Half letter', 5.5, 8.5], tabloid: ['Tabloid', 11, 17],
   a4: ['A4', 8.27, 11.69], a5: ['A5', 5.83, 8.27], card: ['Index card', 4, 6],
 };
-const SIZES = { note: [3 * IN, 3 * IN], quote: [5 * IN, 3 * IN], image: [4 * IN, 3 * IN], post: [4 * IN, 2 * IN] };
+const PDF_BAR = 36;
+const SIZES = { note: [3 * IN, 3 * IN], quote: [5 * IN, 3 * IN], image: [4 * IN, 3 * IN], post: [4 * IN, 2 * IN], pdf: [6.5 * IN, Math.round(6.5 * IN * 1.294) + PDF_BAR],
+  link: [4 * IN, 176], text: [4 * IN, 40], rect: [3 * IN, 2 * IN], ellipse: [2.5 * IN, 2.5 * IN], line: [3 * IN, 1] };
+// Drawing colours, weights (board units; 1 unit = 1/96 in) and line styles.
+const INK = { ivory: '#E9E2D2', ink: '#1E2836', red: '#C0392B', gold: '#E9C46A', blue: '#7FB2E5', green: '#8CC08A' };
+const WEIGHTS = [1, 2, 4, 8];
+const TEXT_SIZES = { S: 16, M: 24, L: 36, XL: 56 };
+const PEN = { red: '#C0392B', blue: '#2E6DB4', ink: '#1E2836', yellow: '#F2D33A', green: '#7BD389', pink: '#F29AC0' };
+const dashArray = (dash, w) => dash === 'dashed' ? `${3 * w + 5} ${2 * w + 5}` : dash === 'dotted' ? `0.1 ${2 * w + 4}` : '';
+const LABEL = { sheet: 'Sheet', note: 'Note', quote: 'Quote', image: 'Image', post: 'Post card', text: 'Text', rect: 'Box', ellipse: 'Circle', line: 'Line', pdf: 'PDF', link: 'Link' };
 const MIN_Z = 0.1, MAX_Z = 3;
 
 const fmtIn = (u) => { const v = Math.round((u / IN) * 4) / 4; return String(v).replace(/\.0+$/, ''); };
@@ -48,6 +57,11 @@ export function initDesk(ctx) {
   const NS = 'http://www.w3.org/2000/svg';
   let board = null, els = new Map(), linkEls = new Map(), selected = null, sel = new Set(), selLink = null, tool = 'select', tieFrom = null, zTop = 1;
   let saveTimer = null;
+  // The last colour/weight/style you picked is used for the next shape, line or text.
+  let style = { color: 'ivory', weight: 2, dash: 'solid', fill: false, ends: 'none', size: 'M' };
+  try { Object.assign(style, JSON.parse(localStorage.getItem('na-desk-style') || '{}')); } catch {}
+  const remember = (patch) => { Object.assign(style, patch); try { localStorage.setItem('na-desk-style', JSON.stringify(style)); } catch {} };
+  let ink = null; // PDF markup mode: { id, mode: 'pen'|'hl'|'erase', color }
 
   /* ------------------------------------------------------------ frame scheduling */
   // Everything visual that follows the pointer is batched into one animation frame.
@@ -146,6 +160,11 @@ export function initDesk(ctx) {
       case 'note': return `<div class="nt-body" contenteditable="true" data-ph="Note…">${it.html || ''}</div><div class="rz"></div>`;
       case 'quote': return `<div class="q-mark">“</div><div class="q-body" contenteditable="true" data-ph="Quotation…">${it.html || ''}</div><div class="q-src" contenteditable="true" data-ph="— Source">${escH(it.source || '')}</div><div class="rz"></div>`;
       case 'image': return `<span class="tape t1"></span><span class="tape t2"></span><img src="${escH(it.url)}" alt="" draggable="false"><div class="im-cap" contenteditable="true" data-ph="Caption…">${escH(it.caption || '')}</div><div class="rz"></div>`;
+      case 'text': return `<div class="tx-body" contenteditable="true" data-ph="Text">${it.html || ''}</div><div class="rz"></div>`;
+      case 'rect': case 'ellipse': return `<svg class="shp"></svg><div class="rz"></div>`;
+      case 'line': return `<svg class="ln"></svg>`;
+      case 'pdf': return `<div class="pdf-bar"><span class="pdf-t">${escH(it.title || 'PDF')}</span><button class="pg" data-pg="-1" title="Previous page">‹</button><span class="pdf-n">${it.page || 1} / ${it.pages || '…'}</span><button class="pg" data-pg="1" title="Next page">›</button><button class="mini" data-act="openpdf" title="Open the PDF in a new tab">Open</button></div><div class="pdf-page"><canvas></canvas><svg class="marks"></svg></div><div class="rz"></div>`;
+      case 'link': return `${it.image ? `<img class="lk-img" src="${escH(it.image)}" alt="" draggable="false" referrerpolicy="no-referrer">` : ''}<div class="lk-b"><p class="lk-site">${escH(it.site || '')}</p><p class="lk-t">${escH(it.title || it.url)}</p>${it.description ? `<p class="lk-d">${escH(it.description)}</p>` : ''}<div class="lk-acts"><a class="mini" href="${escH(it.url)}" target="_blank" rel="noopener">Open ↗</a><button class="mini" data-act="clip" title="Bring the article's text onto the board as sheets">Clip text → sheets</button></div></div><div class="rz"></div>`;
       case 'post': return `<p class="pc-k">${escH(it.status || 'Post')}</p><p class="pc-t">${escH(it.title || 'Untitled')}</p>${it.subtitle ? `<p class="pc-s">${escH(it.subtitle)}</p>` : ''}<button class="mini" data-act="open">Open in editor</button>`;
     }
     return '';
@@ -160,6 +179,7 @@ export function initDesk(ctx) {
       if (ed.classList.contains('sh-body') || ed.classList.contains('nt-body') || ed.classList.contains('q-body')) it.html = ed.innerHTML;
       if (ed.classList.contains('q-src')) it.source = ed.textContent;
       if (ed.classList.contains('im-cap')) it.caption = ed.textContent;
+      if (ed.classList.contains('tx-body')) it.html = ed.innerHTML;
       save();
     }));
     el.addEventListener('focusin', () => el.classList.add('editing'));
@@ -168,17 +188,85 @@ export function initDesk(ctx) {
     el.querySelector('[data-act=post]')?.addEventListener('click', () => sheetToPost(it));
     el.querySelector('[data-act=open]')?.addEventListener('click', () => it.postId && openPost(it.postId));
     if (it.type === 'post') el.addEventListener('dblclick', () => it.postId && openPost(it.postId));
+    if (it.type === 'text') el.querySelector('.tx-body').addEventListener('input', () => { it.html = el.querySelector('.tx-body').innerHTML; it.h = el.offsetHeight; });
+    if (it.type === 'pdf') {
+      el.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => pdfGo(it, +b.dataset.pg));
+      el.querySelector('[data-act=openpdf]').onclick = async () => { const u = await signedUrl(it.path); if (u) open(u, '_blank', 'noopener'); };
+      renderPdf(it);
+    }
+    if (it.type === 'link') { el.querySelector('[data-act=clip]').onclick = () => clipLink(it); const im = el.querySelector('.lk-img'); if (im) im.onerror = () => im.remove(); }
+    paint(it);
     return el;
   }
   function place(it) {
     const el = els.get(it.id); if (!el) return;
-    el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.width = it.w + 'px'; el.style.height = it.h + 'px'; el.style.zIndex = it.z || 1;
+    el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.width = it.w + 'px'; el.style.zIndex = it.z || 1;
+    el.style.height = it.type === 'text' ? 'auto' : it.h + 'px';
     if (it.rot) el.style.setProperty('--rot', it.rot + 'deg');
+  }
+
+  /* ------------------------------------------------------------ text, shapes, lines */
+  function paint(it) {
+    const el = els.get(it.id); if (!el) return;
+    if (it.type === 'text') {
+      const b = el.querySelector('.tx-body'); b.style.fontSize = TEXT_SIZES[it.size || 'M'] + 'px'; b.style.color = INK[it.color || 'ivory'];
+      requestAnimationFrame(() => { it.h = el.offsetHeight || it.h; });
+    }
+    if (it.type === 'rect' || it.type === 'ellipse') {
+      const w = it.w, h = it.h, sw = it.weight || 2, c = INK[it.color || 'ivory'], d = dashArray(it.dash, sw);
+      const attrs = `fill="${it.fill ? c : 'none'}" fill-opacity="${it.fill ? 0.14 : 0}" stroke="${c}" stroke-width="${sw}" stroke-dasharray="${d}" stroke-linecap="round" vector-effect="none"`;
+      const svg = el.querySelector('.shp'); svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.innerHTML = it.type === 'rect' ? `<rect x="${sw / 2}" y="${sw / 2}" width="${Math.max(0, w - sw)}" height="${Math.max(0, h - sw)}" ${attrs}/>` : `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${Math.max(0, w / 2 - sw / 2)}" ry="${Math.max(0, h / 2 - sw / 2)}" ${attrs}/>`;
+    }
+    if (it.type === 'line') paintLine(it);
+  }
+  // A line stores its ends relative to its box (it.p = [x1, y1, x2, y2]) so it moves like any piece.
+  function setLineEnds(it, a, b) {
+    it.x = Math.round(Math.min(a.x, b.x)); it.y = Math.round(Math.min(a.y, b.y));
+    it.w = Math.max(1, Math.round(Math.abs(b.x - a.x))); it.h = Math.max(1, Math.round(Math.abs(b.y - a.y)));
+    it.p = [Math.round(a.x - it.x), Math.round(a.y - it.y), Math.round(b.x - it.x), Math.round(b.y - it.y)];
+  }
+  const lineEnds = (it) => { const p = it.p || [0, 0, it.w, 0]; return [{ x: it.x + p[0], y: it.y + p[1] }, { x: it.x + p[2], y: it.y + p[3] }]; };
+  function paintLine(it) {
+    const el = els.get(it.id); if (!el) return;
+    const [x1, y1, x2, y2] = it.p || [0, 0, it.w, 0], sw = it.weight || 2, c = INK[it.color || 'ivory'];
+    const head = (ax, ay, bx, by) => { // arrowhead at (bx,by) pointing away from (ax,ay)
+      const L = Math.max(10, sw * 4 + 6), W = L * 0.55, a = Math.atan2(by - ay, bx - ax);
+      const p = (r, t) => `${bx - r * Math.cos(a) + t * Math.sin(a)},${by - r * Math.sin(a) - t * Math.cos(a)}`;
+      return `<polygon points="${bx},${by} ${p(L, W)} ${p(L, -W)}" fill="${c}"/>`;
+    };
+    const ends = it.ends || 'none', sel = el.classList.contains('sel');
+    el.querySelector('.ln').innerHTML = `<line class="hitln" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>` +
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${sw}" stroke-dasharray="${dashArray(it.dash, sw)}" stroke-linecap="round"/>` +
+      (ends === 'end' || ends === 'both' ? head(x1, y1, x2, y2) : '') + (ends === 'both' ? head(x2, y2, x1, y1) : '') +
+      (sel ? `<circle class="lend" data-end="0" cx="${x1}" cy="${y1}" r="7"/><circle class="lend" data-end="1" cx="${x2}" cy="${y2}" r="7"/>` : '');
+  }
+  function styleControls(it) {
+    const cur = (k, d) => (it[k] ?? d);
+    let s = Object.entries(INK).map(([k, c]) => `<button class="sw${cur('color', 'ivory') === k ? ' on' : ''}" data-ink="${k}" style="background:${c}" title="${k}"></button>`).join('');
+    if (it.type === 'text') return s + '<i class="dv"></i>' + Object.keys(TEXT_SIZES).map((k) => `<button class="sb${cur('size', 'M') === k ? ' on' : ''}" data-size="${k}">${k}</button>`).join('');
+    s += '<i class="dv"></i>' + WEIGHTS.map((w) => `<button class="sb${cur('weight', 2) === w ? ' on' : ''}" data-w="${w}" title="Line weight ${w}"><svg viewBox="0 0 26 12"><line x1="3" y1="6" x2="23" y2="6" stroke-width="${Math.min(w, 7)}"/></svg></button>`).join('');
+    s += '<i class="dv"></i>' + [['solid', ''], ['dashed', '5 3'], ['dotted', '0.1 4']].map(([k, d]) => `<button class="sb${cur('dash', 'solid') === k ? ' on' : ''}" data-dash="${k}" title="${k}"><svg viewBox="0 0 26 12"><line x1="3" y1="6" x2="23" y2="6" stroke-width="2.2" stroke-dasharray="${d}" stroke-linecap="round"/></svg></button>`).join('');
+    if (it.type === 'line') s += '<i class="dv"></i>' + [['none', '—'], ['end', '→'], ['both', '↔']].map(([k, l]) => `<button class="sb${cur('ends', 'none') === k ? ' on' : ''}" data-ends="${k}" title="Arrowheads">${l}</button>`).join('');
+    else s += `<button class="sb${it.fill ? ' on' : ''}" data-fill="1" title="Tinted fill">Fill</button>`;
+    return s;
+  }
+  function wireStyle(bar, it) {
+    const set = (patch) => { Object.assign(it, patch); remember(patch); paint(it); renderSelBar(); save(); };
+    bar.querySelectorAll('[data-ink]').forEach((b) => b.onclick = () => set({ color: b.dataset.ink }));
+    bar.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => set({ size: b.dataset.size }));
+    bar.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => set({ weight: +b.dataset.w }));
+    bar.querySelectorAll('[data-dash]').forEach((b) => b.onclick = () => set({ dash: b.dataset.dash }));
+    bar.querySelectorAll('[data-ends]').forEach((b) => b.onclick = () => set({ ends: b.dataset.ends }));
+    bar.querySelector('[data-fill]')?.addEventListener('click', () => set({ fill: !it.fill }));
   }
   function addItem(type, cx, cy, extra = {}) {
     let w, h;
     if (type === 'sheet') { extra.paper ||= 'letter'; [w, h] = paperSize(extra.paper, extra.land); } else [w, h] = SIZES[type];
-    const it = { id: uid(), type, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, z: ++zTop, rot: type === 'note' ? +(Math.random() * 4 - 2).toFixed(1) : 0, ...extra };
+    if (extra.w) w = extra.w; if (extra.h) h = extra.h;
+    const looks = type === 'text' ? { color: style.color, size: style.size } : ['rect', 'ellipse', 'line'].includes(type) ? { color: style.color, weight: style.weight, dash: style.dash, fill: style.fill, ends: style.ends } : {};
+    const at = type === 'text' ? { x: Math.round(cx), y: Math.round(cy - 20) } : { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2) };
+    const it = { id: uid(), type, ...at, w, h, z: ++zTop, rot: type === 'note' ? +(Math.random() * 4 - 2).toFixed(1) : 0, ...looks, ...extra };
     board.items.push(it); mount(it); select(it.id); save(); return it;
   }
   const viewCenter = () => toWorld(...vpCenter());
@@ -189,8 +277,11 @@ export function initDesk(ctx) {
   function setSel(ids) {
     const linkWas = selLink; selLink = null;
     const same = !linkWas && ids.length === sel.size && ids.every((i) => sel.has(i));
+    const before = sel;
     sel = new Set(ids); selected = sel.size === 1 ? ids[0] : null;
     els.forEach((el, k) => el.classList.toggle('sel', sel.has(k)));
+    [...before, ...sel].forEach((i) => { const it = byId(i); if (it?.type === 'line') paintLine(it); });
+    if (ink && ink.id !== selected) setInk(null);
     ids.forEach((i) => { const it = byId(i); if (it && (it.z || 0) < zTop && ids.length === 1) { it.z = ++zTop; place(it); } });
     if (!same) { if (linkWas) drawLinks(); renderSelBar(); }
   }
@@ -227,6 +318,11 @@ export function initDesk(ctx) {
     } else if (selected) {
       const it = byId(selected);
       let extra = '';
+      if (['text', 'rect', 'ellipse', 'line'].includes(it.type)) extra = styleControls(it);
+      if (it.type === 'pdf') extra = `<button data-a="pgprev" title="Previous page">‹</button><span class="pgn">${it.page || 1} / ${it.pages || '…'}</span><button data-a="pgnext" title="Next page">›</button><i class="dv"></i>` +
+        [['pen', 'Pen'], ['hl', 'Highlight'], ['erase', 'Erase']].map(([k, l]) => `<button class="sb${ink?.mode === k ? ' on' : ''}" data-ink-mode="${k}">${l}</button>`).join('') +
+        (ink && ink.mode !== 'erase' ? Object.entries(PEN).map(([k, c]) => `<button class="sw${ink.color === k ? ' on' : ''}" data-pen="${k}" style="background:${c}" title="${k}"></button>`).join('') : '') +
+        '<button data-a="clearpg" title="Remove all marks on this page">Clear page</button><i class="dv"></i>';
       if (it.type === 'note') extra = Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
       if (it.type === 'sheet') {
         extra = `<select data-a="paper" title="Paper size">${Object.entries(PAPER).map(([k, [n, w, h]]) => `<option value="${k}"${it.paper === k ? ' selected' : ''}>${n} (${w} × ${h})</option>`).join('')}<option value="custom"${!it.paper || it.paper === 'custom' ? ' selected' : ''}>Custom (${fmtIn(it.w)} × ${fmtIn(it.h)})</option></select>` +
@@ -234,7 +330,7 @@ export function initDesk(ctx) {
           (overflows(it) ? '<button data-a="split" title="Flow the overflow onto new pages">Split into pages</button>' : '') +
           (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '');
       }
-      bar.innerHTML = `<span>${{ sheet: 'Sheet', note: 'Note', quote: 'Quote', image: 'Image', post: 'Post card' }[it.type]}</span>${extra}` +
+      bar.innerHTML = `<span>${LABEL[it.type] || 'Piece'}</span>${extra}` +
         '<button data-a="tie">Tie string</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button>';
       bar.hidden = false;
       bar.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { it.color = b.dataset.c; els.get(it.id).style.background = NOTE_COLORS[it.color]; save(); });
@@ -247,6 +343,17 @@ export function initDesk(ctx) {
         const cx = it.x + it.w / 2; [it.w, it.h] = [it.h, it.w]; it.x = Math.round(cx - it.w / 2); resized(it); renderSelBar();
       });
       bar.querySelector('[data-a=zoom]')?.addEventListener('click', () => zoomToItem(it));
+      if (['text', 'rect', 'ellipse', 'line'].includes(it.type)) wireStyle(bar, it);
+      if (it.type === 'pdf') {
+        bar.querySelector('[data-a=pgprev]').onclick = () => pdfGo(it, -1);
+        bar.querySelector('[data-a=pgnext]').onclick = () => pdfGo(it, 1);
+        bar.querySelectorAll('[data-ink-mode]').forEach((b) => b.onclick = () => {
+          const m = b.dataset.inkMode;
+          setInk(ink?.mode === m ? null : { id: it.id, mode: m, color: m === 'hl' ? (ink?.mode === 'hl' ? ink.color : 'yellow') : m === 'pen' ? (ink?.mode === 'pen' ? ink.color : 'red') : null });
+        });
+        bar.querySelectorAll('[data-pen]').forEach((b) => b.onclick = () => { ink.color = b.dataset.pen; renderSelBar(); });
+        bar.querySelector('[data-a=clearpg]').onclick = () => { if (it.marks) delete it.marks[it.page || 1]; renderMarks(it); save(); };
+      }
       bar.querySelector('[data-a=split]')?.addEventListener('click', () => splitSheet(it));
       bar.querySelector('[data-a=join]')?.addEventListener('click', () => joinSheets(it));
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
@@ -403,7 +510,8 @@ export function initDesk(ctx) {
     tool = t; tieFrom = null; els.forEach((el) => el.classList.remove('tie-from'));
     document.querySelectorAll('#deskTools [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
     vp.classList.toggle('tying', t === 'string');
-    $('deskHint').textContent = t === 'string' ? 'Click a piece, then another, to tie them with string. Esc to stop.' : '';
+    vp.classList.toggle('drawing', ['text', 'line', 'rect', 'ellipse'].includes(t));
+    $('deskHint').textContent = { string: 'Click a piece, then another, to tie them with string. Esc to stop.', text: 'Click where the text should go.', line: 'Drag to draw a line. Hold Shift to keep it straight.', rect: 'Drag to draw a box. Hold Shift for a square.', ellipse: 'Drag to draw an ellipse. Hold Shift for a circle.' }[t] || '';
   }
   document.querySelectorAll('#deskTools [data-tool]').forEach((b) => b.onclick = () => {
     const t = b.dataset.tool, c = viewCenter(), jitter = () => (Math.random() - 0.5) * 120;
@@ -412,8 +520,14 @@ export function initDesk(ctx) {
       const f = els.get(selected)?.querySelector(t === 'sheet' ? '.sh-title' : '[contenteditable]'); f?.focus({ preventScroll: true }); return;
     }
     if (t === 'image') { $('deskImgInput').click(); return; }
+    if (t === 'pdf') { $('deskPdfInput').click(); return; }
+    if (t === 'link') { const r = $('linkRow'); r.hidden = !r.hidden; if (!r.hidden) $('linkInput').focus(); return; }
     setTool(t);
   });
+  $('deskPdfInput').onchange = async () => { const files = [...$('deskPdfInput').files]; $('deskPdfInput').value = ''; const c = viewCenter(); for (const f of files) { const r = await uploadPdf(f); if (r) addItem('pdf', c.x, c.y, { path: r.path, title: r.title, page: 1, marks: {} }); c.x += 60; c.y += 60; } };
+  const addFromLinkRow = () => { const u = $('linkInput').value.trim(); if (!u) return; $('linkInput').value = ''; $('linkRow').hidden = true; const c = viewCenter(); addLink(u, c.x, c.y); };
+  $('linkAdd').onclick = addFromLinkRow;
+  $('linkInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addFromLinkRow(); if (e.key === 'Escape') $('linkRow').hidden = true; });
   $('deskImgInput').onchange = async () => { const files = [...$('deskImgInput').files]; $('deskImgInput').value = ''; const c = viewCenter(); for (const f of files) await dropImage(f, c.x, c.y); };
   $('zoomIn').onclick = () => zoomAt(view().z * 1.25, ...vpCenter());
   $('zoomOut').onclick = () => zoomAt(view().z / 1.25, ...vpCenter());
@@ -443,7 +557,30 @@ export function initDesk(ctx) {
       const l = board.links.find((x) => x.id === lk.dataset.id);
       drag = { mode: 'bend', l, sx: e.clientX, sy: e.clientY, moved: false }; vp.setPointerCapture(e.pointerId); return;
     }
+    // Drawing tools work anywhere on the board, over pieces too.
+    if (tool === 'text' || tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+      e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
+      const p0 = toWorld(e.clientX, e.clientY);
+      if (tool === 'text') {
+        const it = addItem('text', p0.x, p0.y, {}); setTool('select');
+        els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); return;
+      }
+      drag = { mode: 'draw', type: tool, p0, it: null, sx: e.clientX, sy: e.clientY, moved: false }; vp.setPointerCapture(e.pointerId); return;
+    }
+    const lend = e.target.closest('.lend');
+    if (lend) {
+      e.preventDefault(); eatMouse = true;
+      const it = byId(lend.closest('.it').dataset.id), [a, b] = lineEnds(it);
+      drag = { mode: 'lineEnd', it, end: +lend.dataset.end, fixed: +lend.dataset.end ? a : b, moved: true }; vp.setPointerCapture(e.pointerId); return;
+    }
     const itEl = e.target.closest('.it');
+    if (itEl && ink && itEl.dataset.id === ink.id && e.target.closest('.pdf-page')) {
+      e.preventDefault(); eatMouse = true;
+      const it = byId(ink.id);
+      if (ink.mode === 'erase') { eraseAt(it, e.clientX, e.clientY); drag = { mode: 'erase', it, moved: true }; }
+      else drag = { mode: 'ink', it, pts: [markPoint(it, e.clientX, e.clientY)], path: null, moved: true };
+      vp.setPointerCapture(e.pointerId); return;
+    }
     if (itEl) {
       const it = byId(itEl.dataset.id);
       if (tool === 'string') {
@@ -466,7 +603,7 @@ export function initDesk(ctx) {
         drag = { mode: 'resize', it, sx: e.clientX, sy: e.clientY, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
-      if (!e.shiftKey && e.target.closest('input, button, select')) return;
+      if (!e.shiftKey && e.target.closest('input, button, select, a')) return;
       const ed = !e.shiftKey && e.target.closest('[contenteditable]');
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
       e.preventDefault(); eatMouse = true;
@@ -504,9 +641,11 @@ export function initDesk(ctx) {
     }
     else if (drag.mode === 'resize') {
       const it = drag.it, snap = (v) => Math.round(v / (IN / 4)) * (IN / 4);
-      let w = Math.max(IN, drag.w + dx / z), h = Math.max(IN * 0.75, drag.h + dy / z);
+      const small = ['rect', 'ellipse', 'text', 'link'].includes(it.type);
+      let w = Math.max(small ? 24 : IN, drag.w + dx / z), h = Math.max(small ? 24 : IN * 0.75, drag.h + dy / z);
       if (e.shiftKey) h = w / drag.ratio;
       w = snap(w); h = snap(h);
+      if (it.type === 'pdf') { w = Math.max(2 * IN, drag.w + dx / z); h = Math.round(w * (it.ar || 1.294)) + PDF_BAR; }
       if (it.type === 'sheet') {
         // Snap to a standard paper size when close to one (either orientation).
         it.paper = 'custom';
@@ -515,7 +654,42 @@ export function initDesk(ctx) {
         }
         const sz = drag.it && els.get(it.id)?.querySelector('.sz'); it.w = w; it.h = h; if (sz) sz.textContent = sizeLabel(it);
       }
-      it.w = w; it.h = h; touchItem(it.id);
+      it.w = w; it.h = h; touchItem(it.id); if (it.type === 'rect' || it.type === 'ellipse') paint(it);
+    } else if (drag.mode === 'draw') {
+      let p = toWorld(e.clientX, e.clientY); const p0 = drag.p0;
+      if (!drag.it) {
+        const t = drag.type, looks = { color: style.color, weight: style.weight, dash: style.dash, fill: style.fill, ends: style.ends };
+        drag.it = { id: uid(), type: t, x: p0.x, y: p0.y, w: 1, h: 1, z: ++zTop, rot: 0, ...looks };
+        board.items.push(drag.it); mount(drag.it);
+      }
+      const it = drag.it;
+      if (it.type === 'line') {
+        if (e.shiftKey) { // snap to 45°
+          const a = Math.round(Math.atan2(p.y - p0.y, p.x - p0.x) / (Math.PI / 4)) * (Math.PI / 4), r = Math.hypot(p.x - p0.x, p.y - p0.y);
+          p = { x: p0.x + r * Math.cos(a), y: p0.y + r * Math.sin(a) };
+        }
+        setLineEnds(it, p0, p);
+      } else {
+        let w = p.x - p0.x, h = p.y - p0.y;
+        if (e.shiftKey) { const m = Math.max(Math.abs(w), Math.abs(h)); w = Math.sign(w || 1) * m; h = Math.sign(h || 1) * m; }
+        it.x = Math.round(Math.min(p0.x, p0.x + w)); it.y = Math.round(Math.min(p0.y, p0.y + h)); it.w = Math.max(2, Math.round(Math.abs(w))); it.h = Math.max(2, Math.round(Math.abs(h)));
+      }
+      place(it); paint(it);
+    } else if (drag.mode === 'lineEnd') {
+      let p = toWorld(e.clientX, e.clientY); const f = drag.fixed;
+      if (e.shiftKey) { const a = Math.round(Math.atan2(p.y - f.y, p.x - f.x) / (Math.PI / 4)) * (Math.PI / 4), r = Math.hypot(p.x - f.x, p.y - f.y); p = { x: f.x + r * Math.cos(a), y: f.y + r * Math.sin(a) }; }
+      if (drag.end) setLineEnds(drag.it, f, p); else setLineEnds(drag.it, p, f);
+      place(drag.it); paintLine(drag.it); updateLinks(new Set([drag.it.id]));
+    } else if (drag.mode === 'ink') {
+      const pt = markPoint(drag.it, e.clientX, e.clientY), last = drag.pts[drag.pts.length - 1];
+      if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 2) return;
+      drag.pts.push(pt);
+      const svg = els.get(drag.it.id).querySelector('.marks');
+      if (!drag.path) { drag.path = document.createElementNS(NS, 'path'); svg.appendChild(drag.path); }
+      Object.entries(markAttrs(ink)).forEach(([k, v]) => drag.path.setAttribute(k, v));
+      drag.path.setAttribute('d', ptsToD(drag.pts));
+    } else if (drag.mode === 'erase') {
+      eraseAt(drag.it, e.clientX, e.clientY);
     } else if (drag.mode === 'bend') {
       const gm = geom(drag.l); if (!gm) return;
       const p = toWorld(e.clientX, e.clientY);
@@ -529,7 +703,22 @@ export function initDesk(ctx) {
     vp.classList.remove('panning');
     d.group?.forEach((g) => g.el?.classList.remove('dragging'));
     d.box?.remove();
-    if (d.mode === 'resize') { els.get(d.it.id)?.classList.remove('resizing'); renderSelBar(); }
+    if (d.mode === 'resize') { els.get(d.it.id)?.classList.remove('resizing'); if (d.it.type === 'pdf') renderPdf(d.it); renderSelBar(); }
+    if (d.mode === 'draw') {
+      let it = d.it;
+      if (!it || (it.w < 8 && it.h < 8)) { // a click: drop one at the default size
+        if (it) { board.items = board.items.filter((i) => i !== it); els.get(it.id)?.remove(); els.delete(it.id); }
+        const [w, h] = SIZES[d.type];
+        if (d.type === 'line') { it = addItem('line', d.p0.x, d.p0.y, {}); setLineEnds(it, { x: d.p0.x - w / 2, y: d.p0.y }, { x: d.p0.x + w / 2, y: d.p0.y }); place(it); paint(it); }
+        else it = addItem(d.type, d.p0.x, d.p0.y, {});
+      }
+      setTool('select'); select(it.id); save(); return;
+    }
+    if (d.mode === 'ink') {
+      if (d.pts.length > 1) { const pg = d.it.page || 1; d.it.marks ||= {}; (d.it.marks[pg] ||= []).push({ ...markStyle(ink), d: ptsToD(d.pts) }); }
+      renderMarks(d.it); save(); return;
+    }
+    if (d.mode === 'erase' || d.mode === 'lineEnd') { save(); return; }
     if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
       if (sel.size > 1) select(d.it.id); // a plain click inside a group picks that one piece
       if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
@@ -537,6 +726,9 @@ export function initDesk(ctx) {
     if (d.mode === 'pan') saveView(); else if (d.moved && d.mode !== 'marquee') save();
   };
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
+  vp.addEventListener('dblclick', (e) => {
+    if (!e.target.closest('.it, .lk') && tool === 'select') { const p = toWorld(e.clientX, e.clientY); const it = addItem('text', p.x, p.y, {}); els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); }
+  });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
     const sc = e.target.closest('.page, .nt-body, .q-body'), host = e.target.closest('.it');
@@ -549,6 +741,7 @@ export function initDesk(ctx) {
   document.addEventListener('keydown', (e) => {
     if (!board || !$('v-desk').classList.contains('on')) return;
     const typing = e.target.closest?.('[contenteditable], input, textarea, select');
+    if (e.key === 'Escape' && ink) { setInk(null); return; }
     if (e.key === 'Escape') { const was = world.contains(document.activeElement); setTool('select'); document.activeElement?.blur?.(); if (!was && !typing) select(null); }
     if (typing) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && (sel.size || selLink)) { e.preventDefault(); removeSelected(); }
@@ -567,6 +760,8 @@ export function initDesk(ctx) {
     if (d.kind === 'quote') addItem('quote', x, y, { html: escH(d.body).replace(/\n/g, '<br>'), source: d.source ? `— ${d.source}` : '' });
     if (d.kind === 'freewrite') { const m = mdToHtml(d.body); addItem('sheet', x, y, { title: d.title || m.title, html: m.html }); }
     if (d.kind === 'image') addItem('image', x, y, { url: d.url, caption: d.title || '' });
+    if (d.kind === 'pdf') addItem('pdf', x, y, { path: d.meta?.path, title: d.title, page: 1, marks: {} });
+    if (d.kind === 'link') addItem('link', x, y, { url: d.url, title: d.title, site: d.source || d.meta?.site, description: d.body || d.meta?.description, image: d.meta?.image, h: d.meta?.image ? 330 : 176 });
     if (d.kind === 'post') addItem('post', x, y, { postId: d.id, title: d.title, subtitle: d.subtitle, status: d.status === 'published' ? 'Published' : 'Draft' });
   }
   const overVp = (e) => { const r = vp.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
@@ -593,13 +788,19 @@ export function initDesk(ctx) {
   };
   document.addEventListener('pointerup', endLib); document.addEventListener('pointercancel', endLib);
 
-  vp.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); vp.classList.add('dropping'); } });
+  vp.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/uri-list')) { e.preventDefault(); vp.classList.add('dropping'); } });
   vp.addEventListener('dragleave', (e) => { if (e.target === vp || !vp.contains(e.relatedTarget)) vp.classList.remove('dropping'); });
   vp.addEventListener('drop', async (e) => {
     e.preventDefault(); vp.classList.remove('dropping');
     const p = toWorld(e.clientX, e.clientY);
+    if (!e.dataTransfer.files.length) {
+      const u = (e.dataTransfer.getData('text/uri-list') || '').split('\n').find((l) => l && !l.startsWith('#'));
+      if (u) addLink(u.trim(), p.x, p.y);
+      return;
+    }
     for (const f of e.dataTransfer.files) {
-      if (f.type.startsWith('image/')) await dropImage(f, p.x, p.y);
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { const r = await uploadPdf(f); if (r) addItem('pdf', p.x, p.y, { path: r.path, title: r.title, page: 1, marks: {} }); }
+      else if (f.type.startsWith('image/')) await dropImage(f, p.x, p.y);
       else if (/\.(md|markdown|txt)$/i.test(f.name) || f.type.startsWith('text/')) {
         const text = await f.text(), m = mdToHtml(text);
         addItem('sheet', p.x, p.y, { title: m.title || f.name.replace(/\.\w+$/, ''), html: m.html });
@@ -637,21 +838,24 @@ export function initDesk(ctx) {
   }
   function renderLib() {
     const box = $('deskLib'), cap = $('deskCapture');
-    cap.hidden = libTab !== 'note'; $('deskUpload').hidden = !(libTab === 'freewrite' || libTab === 'image');
-    $('deskUploadLabel').textContent = libTab === 'image' ? 'Drop images here, or choose files' : 'Drop Freewrite .md files here, or choose files';
-    $('deskUploadInput').accept = libTab === 'image' ? 'image/*' : '.md,.markdown,.txt,text/markdown,text/plain';
+    cap.hidden = libTab !== 'note'; $('linkCap').hidden = libTab !== 'link'; $('deskUpload').hidden = !(libTab === 'freewrite' || libTab === 'files');
+    $('deskUploadLabel').textContent = libTab === 'files' ? 'Drop images or PDFs here, or choose files' : 'Drop Freewrite .md files here, or choose files';
+    $('deskUploadInput').accept = libTab === 'files' ? 'image/*,application/pdf,.pdf' : '.md,.markdown,.txt,text/markdown,text/plain';
     let rows = [];
     if (libTab === 'note') rows = lib.filter((s) => s.kind === 'note' || s.kind === 'quote');
     if (libTab === 'freewrite') rows = lib.filter((s) => s.kind === 'freewrite');
-    if (libTab === 'image') rows = lib.filter((s) => s.kind === 'image');
+    if (libTab === 'files') rows = lib.filter((s) => s.kind === 'image' || s.kind === 'pdf');
+    if (libTab === 'link') rows = lib.filter((s) => s.kind === 'link');
     if (libTab === 'post') rows = posts.map((p) => ({ ...p, kind: 'post' }));
-    box.className = 'desk-lib' + (libTab === 'image' ? ' grid' : '');
+    box.className = 'desk-lib' + (libTab === 'files' ? ' grid' : '');
     box.innerHTML = rows.length ? rows.map((r) => {
       if (r.kind === 'image') return `<div class="lib-it img" data-id="${r.id}" title="${escH(r.title)}"><img src="${escH(r.url)}" alt="" draggable="false"><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
+      if (r.kind === 'pdf') return `<div class="lib-it pdfc" data-id="${r.id}" title="${escH(r.title)}"><span class="k">PDF</span><b>${escH(r.title || 'Untitled')}</b><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
+      if (r.kind === 'link') return `<div class="lib-it lnk" data-id="${r.id}"><span class="k">${escH(r.source || 'Link')}</span><b>${escH(r.title || r.url)}</b><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
       if (r.kind === 'post') return `<div class="lib-it post" data-id="${r.id}"><span class="k">${r.status === 'published' ? 'Published' : 'Draft'}</span><b>${escH(r.title || 'Untitled')}</b>${r.subtitle ? `<i>${escH(r.subtitle)}</i>` : ''}</div>`;
       if (r.kind === 'freewrite') return `<div class="lib-it fw" data-id="${r.id}"><span class="k">Freewrite · ${new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><b>${escH(r.title || 'Untitled')}</b><i>${escH(mdToHtml(r.body).html.replace(/<[^>]+>/g, ' ').slice(0, 110))}…</i><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
       return `<div class="lib-it ${r.kind}" data-id="${r.id}" style="${r.kind === 'note' ? `--nc:${NOTE_COLORS[r.color || 'yellow']}` : ''}">${r.kind === 'quote' ? '<span class="k">Quote</span>' : ''}<p>${escH(r.body).replace(/\n/g, '<br>')}</p>${r.source ? `<span class="src">— ${escH(r.source)}</span>` : ''}<button class="x" data-del="${r.id}" title="Delete">×</button></div>`;
-    }).join('') : `<p class="lib-empty">${{ note: 'No notes yet. Write one above.', freewrite: 'No Freewrite drafts yet.', image: 'No images yet.', post: 'No posts yet.' }[libTab]}</p>`;
+    }).join('') : `<p class="lib-empty">${{ note: 'No notes yet. Write one above.', freewrite: 'No Freewrite drafts yet.', files: 'No images or PDFs yet.', link: 'No links yet. Paste one above.', post: 'No posts yet.' }[libTab]}</p>`;
     box.querySelectorAll('.lib-it').forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
       el.addEventListener('pointerdown', (e) => {
@@ -685,18 +889,175 @@ export function initDesk(ctx) {
   up.addEventListener('drop', async (e) => { e.preventDefault(); up.classList.remove('over'); await uploadToLib([...e.dataTransfer.files]); });
   async function uploadToLib(files) {
     for (const f of files) {
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { await uploadPdf(f, true); continue; }
       if (f.type.startsWith('image/')) { const url = await upload(f, 'desk'); if (url) await sb.from('snippets').insert({ kind: 'image', title: f.name.replace(/\.\w+$/, ''), url }); }
       else { const text = await f.text(); const m = mdToHtml(text); await sb.from('snippets').insert({ kind: 'freewrite', title: m.title || f.name.replace(/\.\w+$/, ''), body: text }); }
     }
     loadLib(); toast(files.length === 1 ? 'Added to the library' : `${files.length} files added`);
   }
 
+  /* ------------------------------------------------------------ PDFs: render & mark up */
+  // PDFs live in the private `desk` bucket and are read through short-lived signed links.
+  let pdfjsP = null; const pdfDocs = new Map(), signedCache = new Map(), renderTok = new Map();
+  const loadPdfjs = () => pdfjsP ||= Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')])
+    .then(([lib, w]) => { lib.GlobalWorkerOptions.workerSrc = w.default; return lib; });
+  async function signedUrl(path) {
+    const c = signedCache.get(path); if (c && c.exp > Date.now()) return c.url;
+    const { data, error } = await sb.storage.from('desk').createSignedUrl(path, 3600);
+    if (error) { toast('Could not open the PDF: ' + error.message); return null; }
+    signedCache.set(path, { url: data.signedUrl, exp: Date.now() + 50 * 60 * 1000 }); return data.signedUrl;
+  }
+  function pdfDoc(path) {
+    if (!pdfDocs.has(path)) pdfDocs.set(path, (async () => { const lib = await loadPdfjs(); const url = await signedUrl(path); return lib.getDocument({ url }).promise; })().catch((e) => { pdfDocs.delete(path); throw e; }));
+    return pdfDocs.get(path);
+  }
+  async function uploadPdf(f, libOnly) {
+    toast('Uploading PDF…');
+    const path = `pdf/${crypto.randomUUID()}.pdf`;
+    const { error } = await sb.storage.from('desk').upload(path, f, { contentType: 'application/pdf' });
+    if (error) { toast('Upload failed: ' + error.message); return null; }
+    const title = f.name.replace(/\.pdf$/i, '');
+    await sb.from('snippets').insert({ kind: 'pdf', title, meta: { path } }); loadLib();
+    if (libOnly) toast('PDF added to the library');
+    return { path, title };
+  }
+  async function renderPdf(it) {
+    const el = els.get(it.id); if (!el || !it.path) return;
+    const tok = (renderTok.get(it.id) || 0) + 1; renderTok.set(it.id, tok);
+    try {
+      const doc = await pdfDoc(it.path);
+      it.pages = doc.numPages; it.page = Math.min(Math.max(1, it.page || 1), it.pages);
+      const pg = await doc.getPage(it.page), v1 = pg.getViewport({ scale: 1 }), ar = v1.height / v1.width;
+      if (renderTok.get(it.id) !== tok) return;
+      if (Math.abs((it.ar || 0) - ar) > 0.002) { it.ar = ar; it.h = Math.round(it.w * ar) + PDF_BAR; place(it); updateLinks(new Set([it.id])); }
+      const scale = Math.min(2600 / v1.width, (it.w * 2) / v1.width), vpPdf = pg.getViewport({ scale });
+      const cv = document.createElement('canvas'); cv.width = Math.floor(vpPdf.width); cv.height = Math.floor(vpPdf.height);
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vpPdf }).promise;
+      if (renderTok.get(it.id) !== tok) return;
+      el.querySelector('.pdf-page canvas').replaceWith(cv);
+      el.querySelector('.pdf-n').textContent = `${it.page} / ${it.pages}`;
+      const pn = $('deskSel').querySelector('.pgn'); if (pn && selected === it.id) pn.textContent = `${it.page} / ${it.pages}`;
+      renderMarks(it);
+    } catch (e) { el.querySelector('.pdf-n').textContent = 'Could not load'; console.error(e); }
+  }
+  function pdfGo(it, d) {
+    const n = Math.min(Math.max(1, (it.page || 1) + d), it.pages || 1); if (n === it.page) return;
+    it.page = n; renderPdf(it); save();
+  }
+  const markH = (it) => Math.round(1000 * (it.ar || 1.294));
+  function markPoint(it, cx, cy) {
+    const r = els.get(it.id).querySelector('.marks').getBoundingClientRect();
+    return [Math.round(((cx - r.left) / r.width) * 1000 * 10) / 10, Math.round(((cy - r.top) / r.height) * markH(it) * 10) / 10];
+  }
+  const ptsToD = (pts) => 'M' + pts.map((p) => p.join(' ')).join(' L');
+  const markStyle = (k) => k.mode === 'hl' ? { c: PEN[k.color] || PEN.yellow, w: 18, hl: 1 } : { c: PEN[k.color] || PEN.red, w: 2.6 };
+  const markAttrs = (k) => { const m = markStyle(k); return { stroke: m.c, 'stroke-width': m.w, fill: 'none', 'stroke-linecap': m.hl ? 'butt' : 'round', 'stroke-linejoin': 'round', 'stroke-opacity': m.hl ? 0.38 : 1 }; };
+  function renderMarks(it) {
+    const svg = els.get(it.id)?.querySelector('.marks'); if (!svg) return;
+    svg.setAttribute('viewBox', `0 0 1000 ${markH(it)}`); svg.setAttribute('preserveAspectRatio', 'none');
+    svg.innerHTML = (it.marks?.[it.page || 1] || []).map((m, i) => `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round" stroke-opacity="${m.hl ? 0.38 : 1}"/>`).join('');
+  }
+  function eraseAt(it, cx, cy) {
+    const svg = els.get(it.id).querySelector('.marks');
+    const hit = document.elementsFromPoint(cx, cy).find((n) => n.tagName === 'path' && svg.contains(n));
+    if (!hit) return;
+    it.marks[it.page || 1].splice(+hit.dataset.i, 1); renderMarks(it);
+  }
+  function setInk(k) {
+    ink = k;
+    els.forEach((el, id) => { el.classList.toggle('inking', !!k && k.id === id); el.querySelector('.marks')?.classList.toggle('erasing', !!k && k.id === id && k.mode === 'erase'); });
+    $('deskHint').textContent = k ? (k.mode === 'erase' ? 'Click or drag over marks to erase. Esc when done.' : 'Draw on the page. Esc when done.') : '';
+    renderSelBar();
+  }
+
+  /* ------------------------------------------------------------ links to articles */
+  async function fetchLink(url, clip = false) {
+    const { data, error } = await sb.functions.invoke('link-preview', { body: { url, clip } });
+    if (error) throw new Error(error.message || 'Could not read the link');
+    if (data?.error && !data.title) throw new Error(data.error);
+    return data;
+  }
+  const normUrl = (u) => (/^https?:\/\//i.test(u) ? u : 'https://' + u).trim();
+  async function addLink(url, x, y) {
+    url = normUrl(url); toast('Reading the link…');
+    let d; try { d = await fetchLink(url); } catch (e) { toast('Could not read that page; added the link alone.'); let host = url; try { host = new URL(url).hostname; } catch {} d = { url, title: url, site: host }; }
+    const meta = { site: d.site || '', description: d.description || '', image: d.image || '' };
+    addItem('link', x, y, { url: d.url || url, title: d.title, site: meta.site, description: meta.description, image: meta.image, h: meta.image ? 330 : 176 });
+    await sb.from('snippets').insert({ kind: 'link', title: d.title || url, url: d.url || url, body: meta.description, source: meta.site, meta }); loadLib();
+  }
+  async function saveLinkToLib() {
+    const u = $('linkCapInput').value.trim(); if (!u) return;
+    $('linkCapInput').value = ''; toast('Reading the link…');
+    let d; try { d = await fetchLink(normUrl(u)); } catch { d = { url: normUrl(u), title: normUrl(u) }; }
+    const meta = { site: d.site || '', description: d.description || '', image: d.image || '' };
+    await sb.from('snippets').insert({ kind: 'link', title: d.title || d.url, url: d.url, body: meta.description, source: meta.site, meta }); loadLib(); toast('Link saved. Drag it onto the board.');
+  }
+  $('linkCapAdd').onclick = saveLinkToLib;
+  $('linkCapInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveLinkToLib(); });
+  async function clipLink(it) {
+    toast('Clipping the article…');
+    let d; try { d = await fetchLink(it.url, true); } catch (e) { toast('Could not clip: ' + e.message); return; }
+    const blocks = d.blocks || []; if (!blocks.length) { toast('No article text found on that page (it may be behind a paywall).'); return; }
+    const head = `<p class="src"><i>${escH(d.site || it.site || '')}${d.author ? ' · ' + escH(d.author) : ''}</i></p>`;
+    const html = head + blocks.map((b) => b.t === 'h' ? `<h3>${escH(b.text)}</h3>` : b.t === 'q' ? `<blockquote>${escH(b.text)}</blockquote>` : `<p>${escH(b.text)}</p>`).join('');
+    const [w, h] = paperSize('letter');
+    const sh = { id: uid(), type: 'sheet', paper: 'letter', w, h, x: it.x + it.w + 96, y: it.y, z: ++zTop, rot: 0, title: d.title || it.title || '', html };
+    board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: it.id, b: sh.id });
+    setSel([sh.id]); splitSheet(sh);
+  }
+  // Paste a link (or plain text) straight onto the board.
+  document.addEventListener('paste', (e) => {
+    if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea')) return;
+    const t = (e.clipboardData?.getData('text/plain') || '').trim(); if (!t) return;
+    e.preventDefault(); const c = viewCenter();
+    if (/^(https?:\/\/|www\.)\S+$/i.test(t)) addLink(t, c.x, c.y);
+    else addItem('text', c.x - 150, c.y, { html: escH(t).replace(/\n/g, '<br>') });
+  });
+
+  /* ------------------------------------------------------------ tabs */
+  // Open boards show as tabs. Closing a tab only hides it; every board stays under "All boards".
+  let tabIds = []; try { tabIds = JSON.parse(localStorage.getItem('na-desk-tabs') || '[]'); } catch {}
+  let boardList = [];
+  const saveTabs = () => { try { localStorage.setItem('na-desk-tabs', JSON.stringify(tabIds)); } catch {} };
+  async function renderTabs(refresh) {
+    if (refresh) boardList = await listBoards();
+    const known = new Set(boardList.map((b) => b.id));
+    tabIds = tabIds.filter((id) => known.has(id));
+    if (board && !tabIds.includes(board.id)) tabIds.push(board.id);
+    saveTabs();
+    const box = $('boardTabs');
+    box.innerHTML = tabIds.map((id) => {
+      const t = board?.id === id ? board.title : boardList.find((b) => b.id === id)?.title;
+      return `<div class="btab${board?.id === id ? ' on' : ''}" data-id="${id}" title="Double-click to rename"><span class="bt-t">${escH(t || 'Untitled board')}</span>${tabIds.length > 1 ? '<button class="bt-x" title="Close tab">×</button>' : ''}</div>`;
+    }).join('');
+    box.querySelectorAll('.btab').forEach((tab) => {
+      const id = tab.dataset.id, label = tab.querySelector('.bt-t');
+      tab.onclick = (e) => { if (e.target.closest('.bt-x') || label.isContentEditable) return; if (board?.id !== id) location.hash = `#/desk/${id}`; };
+      tab.querySelector('.bt-x')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = tabIds.indexOf(id); tabIds.splice(i, 1); saveTabs();
+        if (board?.id === id) location.hash = `#/desk/${tabIds[Math.max(0, i - 1)]}`; else renderTabs();
+      });
+      label.ondblclick = () => {
+        label.contentEditable = 'true'; label.focus(); getSelection().selectAllChildren(label);
+        const done = async (keep) => {
+          label.contentEditable = 'false'; const v = label.textContent.trim() || 'Untitled board';
+          if (!keep) { renderTabs(); return; }
+          if (board?.id === id) { board.title = v; save(); } else await sb.from('boards').update({ title: v }).eq('id', id);
+          const b = boardList.find((x) => x.id === id); if (b) b.title = v; renderTabs();
+        };
+        label.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); label.onblur = null; done(true); } if (e.key === 'Escape') { label.onblur = null; done(false); } };
+        label.onblur = () => done(true);
+      };
+    });
+  }
+  $('boardNew').onclick = async () => { const id = await newBoard(); if (id) { tabIds.push(id); saveTabs(); location.hash = `#/desk/${id}`; } };
+
   /* ------------------------------------------------------------ boards */
   async function listBoards() {
     const { data } = await sb.from('boards').select('id,title,updated_at').order('updated_at', { ascending: false });
     return data || [];
   }
-  $('boardTitle').addEventListener('input', (e) => { if (board) { board.title = e.target.value; save(); } });
   $('boardMenuBtn').onclick = async (e) => {
     e.stopPropagation();
     const m = $('boardMenu'); if (!m.hidden) { m.hidden = true; return; }
@@ -704,12 +1065,13 @@ export function initDesk(ctx) {
     m.innerHTML = boards.map((b) => `<button data-b="${b.id}" class="${board?.id === b.id ? 'cur' : ''}">${escH(b.title)}<small>${new Date(b.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></button>`).join('') +
       '<hr><button data-new="1">+ New board</button>' + (board ? '<button data-delb="1" class="danger">Delete this board</button>' : '');
     m.hidden = false;
-    m.querySelectorAll('[data-b]').forEach((b) => b.onclick = () => { m.hidden = true; location.hash = `#/desk/${b.dataset.b}`; });
-    m.querySelector('[data-new]').onclick = async () => { m.hidden = true; const id = await newBoard(); location.hash = `#/desk/${id}`; };
+    m.querySelectorAll('[data-b]').forEach((b) => b.onclick = () => { m.hidden = true; if (!tabIds.includes(b.dataset.b)) { tabIds.push(b.dataset.b); saveTabs(); } location.hash = `#/desk/${b.dataset.b}`; });
+    m.querySelector('[data-new]').onclick = async () => { m.hidden = true; const id = await newBoard(); if (id) { tabIds.push(id); saveTabs(); location.hash = `#/desk/${id}`; } };
     m.querySelector('[data-delb]')?.addEventListener('click', async () => {
       m.hidden = true;
       if (!(await confirmBox('Delete this board?', `<p>“${escH(board.title)}” and everything on it will be deleted. Library notes and images stay.</p>`, 'Delete'))) return;
-      await sb.from('boards').delete().eq('id', board.id); board = null; location.hash = '#/desk';
+      const gone = board.id; await sb.from('boards').delete().eq('id', gone); board = null; tabIds = tabIds.filter((x) => x !== gone); saveTabs();
+      location.hash = tabIds.length ? `#/desk/${tabIds[tabIds.length - 1]}` : '#/desk';
     });
   };
   document.addEventListener('click', (e) => { if (!e.target.closest('#boardMenu, #boardMenuBtn')) $('boardMenu').hidden = true; });
@@ -734,22 +1096,21 @@ export function initDesk(ctx) {
   async function open(id) {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = 'x'; await flush(); }
     if (!id) {
-      const boards = await listBoards();
-      id = boards[0]?.id || await newBoard();
+      const boards = await listBoards(), ids = new Set(boards.map((b) => b.id));
+      id = [...tabIds].reverse().find((t) => ids.has(t)) || boards[0]?.id || await newBoard();
       if (!id) return;
       history.replaceState(null, '', `#/desk/${id}`);
     }
-    if (board?.id === id) { applyView(); return; }
+    if (board?.id === id) { applyView(); renderTabs(); return; }
     const { data, error } = await sb.from('boards').select('*').eq('id', id).single();
     if (error || !data) { toast('Board not found'); location.hash = '#/desk'; return; }
     board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove());
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
-    $('boardTitle').value = board.title;
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
-    applyView(); loadLib();
+    applyView(); loadLib(); renderTabs(true);
     setSaved('Saved');
   }
   addEventListener('beforeunload', () => { if (saveTimer) flush(); });

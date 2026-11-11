@@ -58,10 +58,12 @@ const base = import.meta.env.BASE_URL;
     <div class="tb-left">
       <a class="back" href="#/" title="All posts" aria-label="All posts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></a>
       <span class="pubname">Drafting Board</span>
-      <input class="board-title" id="boardTitle" aria-label="Board name" spellcheck="false">
-      <button class="btn" id="boardMenuBtn" title="Boards">Boards ▾</button>
-      <div class="menu board-menu" id="boardMenu" hidden></div>
+    </div>
+    <div class="tb-center"><div class="board-tabs" id="boardTabs"></div><button class="tab-add" id="boardNew" title="New tab">+</button></div>
+    <div class="tb-right">
       <span class="saved" id="deskSaved">Saved</span>
+      <button class="btn" id="boardMenuBtn" title="All boards">All boards ▾</button>
+      <div class="menu board-menu" id="boardMenu" hidden></div>
     </div>
   </div>
   <div class="desk">
@@ -73,23 +75,35 @@ const base = import.meta.env.BASE_URL;
           <button class="tbtn" data-tool="sheet" title="New sheet"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/></svg><span class="lbl">Sheet</span></button>
           <button class="tbtn" data-tool="note" title="New sticky note"><svg viewBox="0 0 24 24"><path d="M4 4h16v11l-5 5H4z"/><path d="M15 20v-5h5"/></svg><span class="lbl">Note</span></button>
           <button class="tbtn" data-tool="quote" title="New quote card"><svg viewBox="0 0 24 24"><path d="M7 7h4v4c0 3-1.5 5-4 6M15 7h4v4c0 3-1.5 5-4 6"/></svg><span class="lbl">Quote</span></button>
+          <button class="tbtn" data-tool="text" title="Text on the board — click to place"><svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg><span class="lbl">Text</span></button>
+          <button class="tbtn" data-tool="line" title="Draw a line or arrow — drag on the board"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg><span class="lbl">Line</span></button>
+          <button class="tbtn" data-tool="rect" title="Draw a box — drag on the board"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg><span class="lbl">Box</span></button>
+          <button class="tbtn" data-tool="ellipse" title="Draw a circle or ellipse — drag on the board"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="7"/></svg><span class="lbl">Circle</span></button>
           <button class="tbtn" data-tool="image" title="Add images"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg><span class="lbl">Image</span></button>
+          <button class="tbtn" data-tool="pdf" title="Add a PDF to read and mark up"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M8.5 15.5h7M8.5 12h4"/></svg><span class="lbl">PDF</span></button>
+          <button class="tbtn" data-tool="link" title="Add an article by its link"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span class="lbl">Link</span></button>
           <button class="tbtn" data-tool="string" title="Tie pieces with string (T)"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="8" r="2"/><path d="M5 8c2 8 10 9 14 2"/></svg><span class="lbl">String</span></button>
         </div>
+        <div class="link-row" id="linkRow" hidden><input id="linkInput" placeholder="Paste a link to an article" spellcheck="false"><button class="btn primary" id="linkAdd">Add</button></div>
         <input type="file" id="deskImgInput" accept="image/*" multiple hidden>
+        <input type="file" id="deskPdfInput" accept="application/pdf,.pdf" multiple hidden>
         <div class="zoom-row"><button class="tbtn" id="zoomOut" title="Zoom out">−</button><span class="zoom" id="zoomPct">100%</span><button class="tbtn" id="zoomIn" title="Zoom in">+</button><button class="tbtn" id="zoomFit" title="Fit everything"><span class="lbl">Fit all</span></button></div>
       </div>
       <p class="desk-h lib-h">Library</p>
-      <div class="desk-tabs" id="deskTabs"><button data-t="note" class="on">Notes</button><button data-t="freewrite">Freewrite</button><button data-t="image">Images</button><button data-t="post">Posts</button></div>
+      <div class="desk-tabs" id="deskTabs"><button data-t="note" class="on">Notes</button><button data-t="freewrite">Freewrite</button><button data-t="files">Files</button><button data-t="link">Links</button><button data-t="post">Posts</button></div>
       <div class="desk-capture" id="deskCapture">
         <div class="seg" id="capKind"><button data-k="note" class="on">Note</button><button data-k="quote">Quote</button></div>
         <textarea id="capText" rows="3" placeholder="Jot a note…"></textarea>
         <input id="capSource" placeholder="Source (author, book, page)" hidden>
         <button class="btn primary" id="capAdd">Add to library</button>
       </div>
+      <div class="desk-capture" id="linkCap" hidden>
+        <input id="linkCapInput" placeholder="Paste a link to an article" spellcheck="false">
+        <button class="btn primary" id="linkCapAdd">Save link</button>
+      </div>
       <label class="desk-upload" id="deskUpload" hidden><span id="deskUploadLabel"></span><input type="file" id="deskUploadInput" multiple hidden></label>
       <div class="desk-lib" id="deskLib"></div>
-      <p class="desk-tip">Drag anything onto the board, or double-click to add it at the center. Images and Freewrite .md files can be dropped straight onto the board.</p>
+      <p class="desk-tip">Drag anything onto the board, or double-click to add it at the center. Images, PDFs, Freewrite .md files and links can be dropped or pasted straight onto the board.</p>
     </aside>
     <div class="desk-main">
       <canvas class="ruler rx" id="rulerX"></canvas><canvas class="ruler ry" id="rulerY"></canvas><div class="ruler-corner"></div>
