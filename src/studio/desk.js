@@ -159,7 +159,7 @@ export function initDesk(ctx) {
       case 'sheet': return `<div class="grip"><span class="sz">${escH(sizeLabel(it))}</span><button class="mini" data-act="post" title="Turn this sheet into a post">→ Post</button></div><div class="page"><input class="sh-title" value="${escH(it.title || '')}" placeholder="Untitled sheet" spellcheck="false"><div class="sh-body" contenteditable="true" data-ph="Write…">${it.html || ''}</div></div><div class="rz"></div>`;
       case 'note': return `<div class="nt-body" contenteditable="true" data-ph="Note…">${it.html || ''}</div><div class="rz"></div>`;
       case 'quote': return `<div class="q-mark">“</div><div class="q-body" contenteditable="true" data-ph="Quotation…">${it.html || ''}</div><div class="q-src" contenteditable="true" data-ph="— Source">${escH(it.source || '')}</div><div class="rz"></div>`;
-      case 'image': return `<span class="tape t1"></span><span class="tape t2"></span><img src="${escH(it.url)}" alt="" draggable="false"><div class="im-cap" contenteditable="true" data-ph="Caption…">${escH(it.caption || '')}</div><div class="rz"></div>`;
+      case 'image': return `<img src="${escH(it.url)}" alt="" draggable="false"><div class="im-cap" contenteditable="true" data-ph="Caption">${escH(it.caption || '')}</div><div class="rz"></div>`;
       case 'text': return `<div class="tx-body" contenteditable="true" data-ph="Text">${it.html || ''}</div><div class="rz"></div>`;
       case 'rect': case 'ellipse': return `<svg class="shp"></svg><div class="rz"></div>`;
       case 'line': return `<svg class="ln"></svg>`;
@@ -193,6 +193,12 @@ export function initDesk(ctx) {
       el.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => pdfGo(it, +b.dataset.pg));
       el.querySelector('[data-act=openpdf]').onclick = async () => { const u = await signedUrl(it.path); if (u) open(u, '_blank', 'noopener'); };
       renderPdf(it);
+    }
+    if (it.type === 'image') {
+      // Take the picture's own proportions (no cropping).
+      const im = el.querySelector('img');
+      const fit = () => { const ar = im.naturalHeight / im.naturalWidth; if (!ar || Math.abs((it.ar || 0) - ar) < 0.002) return; it.ar = ar; it.h = Math.round(it.w * ar); place(it); updateLinks(new Set([it.id])); save(); };
+      if (im.complete) fit(); else im.onload = fit;
     }
     if (it.type === 'link') { el.querySelector('[data-act=clip]').onclick = () => clipLink(it); const im = el.querySelector('.lk-img'); if (im) im.onerror = () => im.remove(); }
     paint(it);
@@ -646,6 +652,7 @@ export function initDesk(ctx) {
       if (e.shiftKey) h = w / drag.ratio;
       w = snap(w); h = snap(h);
       if (it.type === 'pdf') { w = Math.max(2 * IN, drag.w + dx / z); h = Math.round(w * (it.ar || 1.294)) + PDF_BAR; }
+      if (it.type === 'image' && it.ar && !e.altKey) { w = Math.max(48, drag.w + dx / z); h = Math.round(w * it.ar); }
       if (it.type === 'sheet') {
         // Snap to a standard paper size when close to one (either orientation).
         it.paper = 'custom';
