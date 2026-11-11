@@ -1237,6 +1237,7 @@ export function initDesk(ctx) {
     board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove());
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
+    board.links.forEach((l) => { if (l.anc) { const n = board.items.find((i) => i.id === l.a); if (n) n.rot = 0; } }); // tied notes sit square
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
