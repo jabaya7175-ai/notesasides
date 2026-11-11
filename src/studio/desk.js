@@ -72,6 +72,7 @@ export function initDesk(ctx) {
     if (dirty.items.size) {
       const ids = [...dirty.items]; dirty.items.clear();
       ids.forEach((id) => { const it = byId(id); if (it) place(it); });
+      // updateLinks below always refreshes strings tied to passages.
       updateLinks(new Set(ids));
     }
   }
@@ -173,6 +174,13 @@ export function initDesk(ctx) {
   function mount(it) {
     const el = document.createElement('div');
     el.className = `it ${it.type}`; el.dataset.id = it.id; el.innerHTML = itemHTML(it);
+    // Eight resize dots (corners + edges); text boxes get left/right only.
+    const rz0 = el.querySelector(':scope > .rz');
+    if (rz0) {
+      const dirs = it.type === 'text' ? ['e', 'w'] : ['se', 'nw', 'n', 'ne', 'e', 's', 'sw', 'w'];
+      rz0.dataset.h = dirs[0];
+      dirs.slice(1).forEach((d) => { const h = document.createElement('div'); h.className = 'rz'; h.dataset.h = d; el.appendChild(h); });
+    }
     if (it.type === 'note') el.style.background = NOTE_COLORS[it.color || 'yellow'];
     if ((it.page || 1) > 1) el.classList.add('contpage');
     world.appendChild(el); els.set(it.id, el); place(it);
@@ -183,6 +191,8 @@ export function initDesk(ctx) {
       if (ed.classList.contains('tx-body')) it.html = ed.innerHTML;
       save();
     }));
+    el.querySelectorAll('.page, .nt-body, .q-body').forEach((sc) => sc.addEventListener('scroll', () => { if (board.links.some((l) => l.anc)) { dirty.items.add('_anc'); schedule(); } }, { passive: true }));
+    el.addEventListener('input', () => { if (board.links.some((l) => l.anc)) { dirty.items.add('_anc'); schedule(); } });
     el.addEventListener('focusin', () => el.classList.add('editing'));
     el.addEventListener('focusout', () => setTimeout(() => { if (!el.contains(document.activeElement)) el.classList.remove('editing'); }));
     el.querySelector('.sh-title')?.addEventListener('input', (e) => { it.title = e.target.value; save(); });
@@ -386,14 +396,23 @@ export function initDesk(ctx) {
     board.links.filter((l) => map.has(l.a) && map.has(l.b)).forEach((l) => board.links.push({ ...l, id: uid(), a: map.get(l.a), b: map.get(l.b) }));
     drawLinks(); setSel(out); save();
   }
+  function cleanAnchors() {
+    const live = new Set(board.links.map((l) => l.anc).filter(Boolean));
+    const touched = new Set();
+    world.querySelectorAll('.anc').forEach((sp) => {
+      if (live.has(sp.dataset.anc)) return;
+      const ed = sp.closest('[contenteditable]'); sp.replaceWith(...sp.childNodes); if (ed) touched.add(ed);
+    });
+    touched.forEach((ed) => { ed.normalize(); ed.dispatchEvent(new Event('input', { bubbles: true })); });
+  }
   function removeSelected() {
-    if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; drawLinks(); renderSelBar(); save(); return; }
+    if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; cleanAnchors(); drawLinks(); renderSelBar(); save(); return; }
     if (!sel.size) return;
     const gone = new Set(sel);
     board.items = board.items.filter((i) => !gone.has(i.id));
     board.links = board.links.filter((l) => !gone.has(l.a) && !gone.has(l.b));
     gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
-    sel = new Set(); selected = null; drawLinks(); renderSelBar(); save();
+    sel = new Set(); selected = null; cleanAnchors(); drawLinks(); renderSelBar(); save();
   }
 
   /* ------------------------------------------------------------ pages: split & join */
@@ -486,11 +505,25 @@ export function initDesk(ctx) {
   // (the curve's midpoint), stored as an offset from the straight-line midpoint so the
   // bend travels with the pieces. No offset = natural slack.
   const pinOf = (it) => ({ x: it.x + it.w / 2, y: it.y + 12 });
+  // A string tied to a passage (l.anc) ends at those words, wherever they now are.
+  function anchorPoint(l, toward) {
+    const spans = world.querySelectorAll(`.anc[data-anc="${l.anc}"]`); if (!spans.length) return null;
+    const first = spans[0].getClientRects()[0], last = [...spans[spans.length - 1].getClientRects()].pop();
+    if (!first || !last) return null;
+    const right = toward && toWorld(last.right, last.top).x < toward.x;
+    const r = right ? last : first;
+    let cx = right ? r.right + 2 : r.left - 2, cy = r.top + r.height / 2;
+    const box = spans[0].closest('.page, .nt-body, .q-body, .tx-body');
+    if (box) { const br = box.getBoundingClientRect(); cy = Math.min(Math.max(cy, br.top + 6), br.bottom - 6); }
+    return toWorld(cx, cy);
+  }
   function geom(l) {
     const a = byId(l.a), b = byId(l.b); if (!a || !b) return null;
-    const p = pinOf(a), q = pinOf(b), m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    let p = pinOf(a), q = (l.anc && anchorPoint(l, p)) || pinOf(b);
+    if (l.anc) p = { x: q.x < a.x + a.w / 2 ? a.x + 4 : a.x + a.w - 4, y: a.y + 28 }; // from the note's near side
     const d = Math.hypot(q.x - p.x, q.y - p.y);
-    const apex = l.bend ? { x: m.x + l.bend.x, y: m.y + l.bend.y } : { x: m.x, y: m.y + Math.min(200, d * 0.14) };
+    const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    const apex = l.bend ? { x: m.x + l.bend.x, y: m.y + l.bend.y } : { x: m.x, y: m.y + Math.min(200, d * (l.anc ? 0.05 : 0.14)) };
     const c = { x: 2 * apex.x - m.x, y: 2 * apex.y - m.y };
     return { p, q, m, apex, d: `M${p.x},${p.y} Q${c.x},${c.y} ${q.x},${q.y}` };
   }
@@ -502,6 +535,7 @@ export function initDesk(ctx) {
       const r = { g, shadow: mk('path', 'shd'), hit: mk('path', 'hit'), str: mk('path', 'str'), p1: mk('circle', 'pin'), p2: mk('circle', 'pin'), knob: null };
       r.str.style.stroke = STRING_COLORS[l.color || 'red'];
       [r.p1, r.p2].forEach((c) => c.setAttribute('r', 7));
+      if (l.anc) r.p2.setAttribute('r', 4);
       g.append(r.shadow, r.hit, r.str, r.p1, r.p2);
       if (selLink === l.id) { r.knob = mk('circle', 'knob'); r.knob.setAttribute('r', 9); g.append(r.knob); }
       svg.append(g); linkEls.set(l.id, r);
@@ -510,12 +544,75 @@ export function initDesk(ctx) {
   }
   function updateLinks(only) {
     for (const l of board.links) {
-      if (only && !only.has(l.a) && !only.has(l.b) && !only.has(l.id)) continue;
+      if (only && !l.anc && !only.has(l.a) && !only.has(l.b) && !only.has(l.id)) continue;
       const r = linkEls.get(l.id), gm = geom(l); if (!r || !gm) continue;
       r.str.setAttribute('d', gm.d); r.hit.setAttribute('d', gm.d); r.shadow.setAttribute('d', gm.d);
       r.p1.setAttribute('cx', gm.p.x); r.p1.setAttribute('cy', gm.p.y); r.p2.setAttribute('cx', gm.q.x); r.p2.setAttribute('cy', gm.q.y);
       if (r.knob) { r.knob.setAttribute('cx', gm.apex.x); r.knob.setAttribute('cy', gm.apex.y); }
     }
+  }
+
+  /* ------------------------------------------------------------ formatting bar: highlight, underline, + note */
+  const HL = { yellow: '#F6E27A', green: '#BFE3A8', pink: '#F4B6C8', blue: '#B8D6F2' };
+  const fmt = $('deskFmt');
+  fmt.innerHTML = Object.entries(HL).map(([k, c]) => `<button class="hlsw" data-hl="${c}" title="Highlight ${k}" style="background:${c}"></button>`).join('') +
+    '<i class="dv"></i><button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button><button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button><button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>' +
+    '<button data-cmd="clear" title="Remove highlight and formatting">Clear</button><i class="dv"></i><button data-cmd="note" class="fmt-note" title="Tie a sticky note to this passage">+ Note</button>';
+  let fmtRange = null, fmtEd = null;
+  const hideFmt = () => { fmt.hidden = true; fmtRange = null; fmtEd = null; };
+  document.addEventListener('selectionchange', () => {
+    if (!board || !$('v-desk').classList.contains('on') || drag) return;
+    const s = getSelection(); if (!s.rangeCount || s.isCollapsed) { hideFmt(); return; }
+    const r = s.getRangeAt(0), host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
+    const ed = host?.closest('[contenteditable]'); if (!ed || !world.contains(ed)) { hideFmt(); return; }
+    fmtRange = r.cloneRange(); fmtEd = ed;
+    const rr = r.getBoundingClientRect(), mr = $('deskVp').parentElement.getBoundingClientRect();
+    fmt.hidden = false;
+    const w = fmt.offsetWidth, top = rr.top - mr.top - fmt.offsetHeight - 10;
+    fmt.style.left = Math.min(Math.max(8, rr.left - mr.left + rr.width / 2 - w / 2), mr.width - w - 8) + 'px';
+    fmt.style.top = (top < 30 ? rr.bottom - mr.top + 10 : top) + 'px';
+  });
+  fmt.addEventListener('pointerdown', (e) => e.preventDefault());
+  fmt.addEventListener('mousedown', (e) => e.preventDefault());
+  fmt.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || !fmtRange) return;
+    const s = getSelection(); s.removeAllRanges(); s.addRange(fmtRange);
+    document.execCommand('styleWithCSS', false, true);
+    if (b.dataset.hl) document.execCommand('hiliteColor', false, b.dataset.hl);
+    else if (b.dataset.cmd === 'clear') { document.execCommand('removeFormat'); document.execCommand('hiliteColor', false, 'transparent'); }
+    else if (b.dataset.cmd === 'note') { noteOnSelection(); return; }
+    else document.execCommand(b.dataset.cmd);
+    fmtEd?.dispatchEvent(new Event('input', { bubbles: true }));
+    if (s.rangeCount) fmtRange = s.getRangeAt(0).cloneRange();
+  });
+  // Wrap each piece of selected text in <span class="anc" data-anc="…"> (works across paragraphs).
+  function wrapRange(range, id) {
+    const root = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode;
+    const nodes = []; const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = tw.nextNode(); n; n = tw.nextNode()) if (range.intersectsNode(n) && n.data.length) nodes.push(n);
+    if (root.nodeType === 3) nodes.push(root);
+    nodes.forEach((n) => {
+      let a = 0, z = n.data.length;
+      if (n === range.startContainer) a = range.startOffset;
+      if (n === range.endContainer) z = range.endOffset;
+      if (a >= z || !n.data.slice(a, z).trim()) return;
+      let t = n; if (z < t.data.length) t.splitText(z); if (a > 0) t = t.splitText(a);
+      const sp = document.createElement('span'); sp.className = 'anc'; sp.dataset.anc = id;
+      t.parentNode.insertBefore(sp, t); sp.appendChild(t);
+    });
+  }
+  function noteOnSelection() {
+    const ed = fmtEd, range = fmtRange; if (!ed || !range) return;
+    const hostEl = ed.closest('.it'), host = byId(hostEl.dataset.id), id = uid();
+    wrapRange(range, id); getSelection().removeAllRanges(); hideFmt();
+    ed.dispatchEvent(new Event('input', { bubbles: true }));
+    const sp = world.querySelector(`.anc[data-anc="${id}"]`); if (!sp) return;
+    const r = sp.getClientRects()[0], at = toWorld(r.right, r.top);
+    const [nw, nh] = SIZES.note;
+    const note = addItem('note', host.x + host.w + 72 + nw / 2, at.y - 24 + nh / 2, { color: 'yellow' });
+    board.links.push({ id: uid(), a: note.id, b: host.id, anc: id });
+    drawLinks(); save();
+    els.get(note.id).querySelector('.nt-body').focus({ preventScroll: true });
   }
 
   /* ------------------------------------------------------------ tools */
@@ -614,7 +711,7 @@ export function initDesk(ctx) {
       if (e.target.classList.contains('rz')) {
         e.preventDefault(); eatMouse = true;
         if (it.type === 'text') { it.w = itEl.offsetWidth; it.autoW = false; place(it); }
-        drag = { mode: 'resize', it, sx: e.clientX, sy: e.clientY, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
+        drag = { mode: 'resize', it, hd: e.target.dataset.h || 'se', sx: e.clientX, sy: e.clientY, x: it.x, y: it.y, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
       if (!e.shiftKey && e.target.closest('input, button, select, a')) return;
@@ -654,23 +751,33 @@ export function initDesk(ctx) {
       setSel([...new Set([...drag.base, ...hit])]);
     }
     else if (drag.mode === 'resize') {
-      const it = drag.it, snap = (v) => Math.round(v / (IN / 4)) * (IN / 4);
-      const small = ['rect', 'ellipse', 'text', 'link'].includes(it.type);
-      let w = Math.max(small ? 24 : IN, drag.w + dx / z), h = Math.max(small ? 24 : IN * 0.75, drag.h + dy / z);
-      if (e.shiftKey) h = w / drag.ratio;
-      w = snap(w); h = snap(h);
-      if (it.type === 'text') { it.w = Math.max(24, Math.round(drag.w + dx / z)); place(it); measureText(it); return; }
-      if (it.type === 'pdf') { w = Math.max(2 * IN, drag.w + dx / z); h = Math.round(w * (it.ar || 1.294)) + PDF_BAR; }
-      if (it.type === 'image' && it.ar && !e.altKey) { w = Math.max(48, drag.w + dx / z); h = Math.round(w * it.ar); }
+      const it = drag.it, hd = drag.hd, ddx = dx / z, ddy = dy / z, snap = (v) => Math.round(v / (IN / 4)) * (IN / 4);
+      const E = hd.includes('e'), W = hd.includes('w'), S = hd.includes('s'), N = hd.includes('n');
+      if (it.type === 'text') {
+        const w = Math.max(24, Math.round(drag.w + (E ? ddx : -ddx)));
+        it.w = w; if (W) it.x = Math.round(drag.x + drag.w - w); place(it); measureText(it); return;
+      }
+      const small = ['rect', 'ellipse', 'link', 'image'].includes(it.type);
+      const minW = small ? 24 : IN, minH = small ? 24 : IN * 0.75;
+      let w = drag.w + (E ? ddx : W ? -ddx : 0), h = drag.h + (S ? ddy : N ? -ddy : 0);
+      // Proportions: always for PDFs and images (Alt frees an image), with Shift for anything else.
+      const bar = it.type === 'pdf' ? PDF_BAR : 0;
+      const ar = it.type === 'pdf' ? (it.ar || 1.294) : it.type === 'image' && it.ar && !e.altKey ? it.ar : e.shiftKey ? drag.h / drag.w : 0;
+      if (ar) { if (E || W) h = w * ar + bar; else w = (h - bar) / ar; }
+      w = Math.max(minW, w); h = Math.max(minH, h);
+      if (!ar) { w = snap(w); h = snap(h); }
       if (it.type === 'sheet') {
         // Snap to a standard paper size when close to one (either orientation).
         it.paper = 'custom';
         for (const [k, [, pw, ph]] of Object.entries(PAPER)) {
-          for (const [a, b] of [[pw, ph], [ph, pw]]) if (Math.abs(w - a * IN) < IN * 0.3 && Math.abs(h - b * IN) < IN * 0.3) { w = a * IN; h = b * IN; it.paper = k; }
+          for (const [pa, pb] of [[pw, ph], [ph, pw]]) if (Math.abs(w - pa * IN) < IN * 0.3 && Math.abs(h - pb * IN) < IN * 0.3) { w = pa * IN; h = pb * IN; it.paper = k; }
         }
-        const sz = drag.it && els.get(it.id)?.querySelector('.sz'); it.w = w; it.h = h; if (sz) sz.textContent = sizeLabel(it);
       }
-      it.w = w; it.h = h; touchItem(it.id); if (it.type === 'rect' || it.type === 'ellipse') paint(it);
+      it.w = Math.round(w); it.h = Math.round(h);
+      it.x = W ? Math.round(drag.x + drag.w - it.w) : drag.x;
+      it.y = N ? Math.round(drag.y + drag.h - it.h) : drag.y;
+      const sz = els.get(it.id)?.querySelector('.sz'); if (sz) sz.textContent = sizeLabel(it);
+      touchItem(it.id); if (it.type === 'rect' || it.type === 'ellipse') paint(it);
     } else if (drag.mode === 'draw') {
       let p = toWorld(e.clientX, e.clientY); const p0 = drag.p0;
       if (!drag.it) {
@@ -839,7 +946,11 @@ export function initDesk(ctx) {
   async function sheetToPost(it) {
     const ok = await confirmBox('Make a post from this sheet?', `<p>A new draft called “${escH(it.title || 'Untitled')}” will open in the editor with this sheet's text. The sheet stays on your board.</p>`, 'Create draft');
     if (!ok) return;
-    const html = joinedHtml(chainOf(it)).replace(/<div>/g, '<p>').replace(/<\/div>/g, '</p>').replace(/<p><br><\/p>/g, '');
+    const tmp = document.createElement('div'); tmp.innerHTML = joinedHtml(chainOf(it));
+    tmp.querySelectorAll('.anc').forEach((sp) => sp.replaceWith(...sp.childNodes));
+    tmp.querySelectorAll('[style]').forEach((n) => { n.style.removeProperty('background-color'); if (!n.getAttribute('style')) n.removeAttribute('style'); });
+    tmp.querySelectorAll('span:not([class]):not([style])').forEach((sp) => sp.replaceWith(...sp.childNodes));
+    const html = tmp.innerHTML.replace(/<div>/g, '<p>').replace(/<\/div>/g, '</p>').replace(/<p><br><\/p>/g, '');
     const { data, error } = await sb.from('posts').insert({ title: it.title || '', body_html: html, source: 'studio' }).select('id').single();
     if (error) { toast('Could not create the draft: ' + error.message); return; }
     it.postId = data.id; save(); openPost(data.id);
