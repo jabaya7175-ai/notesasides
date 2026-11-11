@@ -468,12 +468,18 @@ body.previewing #preview{display:block}
 .hist-row .tbtn svg{width:16px;height:16px}
 .hist-row .tbtn .lbl{font-size:13.5px}
 .hist-row .tbtn:disabled{opacity:.35;cursor:default;background:none}
-/* Locked pieces: no dots, no moving; a small tag when selected */
+/* Locked pieces: can't be selected or moved; text stays selectable; unlock from the corner button */
 .it.locked > .rz{display:none!important}
-.it.locked,.it.locked *{cursor:default}
-.it.locked [contenteditable],.it.locked.editing [contenteditable]{cursor:text}
-.it.locked.sel{outline-style:dashed}
-.it.locked.sel::before{content:"Locked";position:absolute;right:0;bottom:100%;margin-bottom:calc(6px * var(--inv,1));font:600 calc(11px * var(--inv,1))/1.6 var(--serif);letter-spacing:.08em;text-transform:uppercase;color:#1E2836;background:#E9C46A;padding:0 calc(6px * var(--inv,1));border-radius:calc(4px * var(--inv,1));pointer-events:none;transform:rotate(calc(-1 * var(--rot,0deg)))}
+.it.locked{cursor:grab}
+.it.locked :is([contenteditable],.tx-body,.sh-body,.nt-body,.q-body,.q-src,.im-cap){user-select:text;-webkit-user-select:text;cursor:text}
+.it.locked .textLayer{user-select:text;-webkit-user-select:text}
+.it.locked .textLayer span{cursor:text}
+.it.locked .sh-title{pointer-events:none}
+.it > .unlock{all:unset;display:none;position:absolute;left:calc(-10px * var(--inv,1));bottom:calc(-10px * var(--inv,1));width:calc(22px * var(--inv,1));height:calc(22px * var(--inv,1));border-radius:50%;background:#E9C46A;color:#1E2836;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer;z-index:6;align-items:center;justify-content:center;pointer-events:auto}
+.it.locked > .unlock{display:flex}
+.it > .unlock svg{width:62%;height:62%;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.it > .unlock:hover{background:#F2D58A}
+.it.line > .unlock{left:calc(var(--lx,0px) - 11px * var(--inv,1))}
 .desk-sel .ic{width:15px;height:15px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Formatting bar over selected text */
 .desk-fmt{position:absolute;z-index:8;display:flex;align-items:center;gap:3px;padding:5px 6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45)}

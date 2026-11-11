@@ -183,6 +183,7 @@ export function initDesk(ctx) {
     }
     if (it.type === 'note') el.style.background = NOTE_COLORS[it.color || 'yellow'];
     if ((it.page || 1) > 1) el.classList.add('contpage');
+    const ub = document.createElement('button'); ub.className = 'unlock'; ub.title = 'Locked: click to unlock'; ub.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'; el.appendChild(ub);
     world.appendChild(el); els.set(it.id, el); place(it);
     el.querySelectorAll('[contenteditable]').forEach((ed) => ed.addEventListener('input', () => {
       if (ed.classList.contains('sh-body') || ed.classList.contains('nt-body') || ed.classList.contains('q-body')) it.html = ed.innerHTML;
@@ -220,7 +221,11 @@ export function initDesk(ctx) {
   function place(it) {
     const el = els.get(it.id); if (!el) return;
     el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.zIndex = it.z || 1;
-    el.classList.toggle('locked', !!it.locked);
+    if (el.classList.contains('locked') !== !!it.locked) {
+      el.classList.toggle('locked', !!it.locked);
+      el.querySelectorAll('[contenteditable]').forEach((ed) => { ed.contentEditable = it.locked ? 'false' : 'true'; });
+      el.querySelectorAll('input').forEach((i) => { i.readOnly = !!it.locked; });
+    }
     if (it.type === 'pdf' && it.pw) el.querySelector('.pdf-page')?.style.setProperty('--scale-factor', String(it.w / it.pw));
     const autoW = it.type === 'text' && it.autoW !== false;
     el.style.width = autoW ? 'max-content' : it.w + 'px';
@@ -418,7 +423,8 @@ export function initDesk(ctx) {
   }
   function toggleLock(on) {
     sel.forEach((id) => { const it = byId(id); if (!it) return; if (on) it.locked = true; else delete it.locked; place(it); if (it.type === 'line') paintLine(it); });
-    renderSelBar(); save(); toast(on ? 'Locked: it stays put until you unlock it.' : 'Unlocked');
+    if (on) { document.activeElement?.blur?.(); setSel([]); } else renderSelBar();
+    save(); toast(on ? 'Locked. Use the lock at its bottom-left corner to unlock.' : 'Unlocked');
   }
   function removeSelected() {
     if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; cleanAnchors(); drawLinks(); renderSelBar(); save(); return; }
@@ -590,7 +596,7 @@ export function initDesk(ctx) {
     const r = s.getRangeAt(0), host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
     const ed = host?.closest('[contenteditable], .textLayer'); if (!ed || !world.contains(ed)) { hideFmt(); return; }
     fmtRange = r.cloneRange(); fmtEd = ed;
-    fmt.classList.toggle('pdfmode', ed.classList.contains('textLayer'));
+    fmt.classList.toggle('pdfmode', ed.classList.contains('textLayer') || !!byId(ed.closest('.it')?.dataset.id)?.locked);
     const rr = r.getBoundingClientRect(), mr = $('deskVp').parentElement.getBoundingClientRect();
     fmt.hidden = false;
     const w = fmt.offsetWidth, top = rr.top - mr.top - fmt.offsetHeight - 10;
@@ -602,12 +608,16 @@ export function initDesk(ctx) {
   fmt.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b || !fmtRange) return;
     if (fmtEd?.classList.contains('textLayer')) { pdfFormat(b); return; }
-    const s = getSelection(); s.removeAllRanges(); s.addRange(fmtRange);
+    const s = getSelection();
+    const lockedEd = fmtEd?.isContentEditable === false && fmtEd.getAttribute('contenteditable') === 'false';
+    if (lockedEd) fmtEd.contentEditable = 'true'; // briefly, so the mark can be applied
+    s.removeAllRanges(); s.addRange(fmtRange);
     document.execCommand('styleWithCSS', false, true);
     if (b.dataset.hl) document.execCommand('hiliteColor', false, b.dataset.hl);
     else if (b.dataset.cmd === 'clear') { document.execCommand('removeFormat'); document.execCommand('hiliteColor', false, 'transparent'); }
-    else if (b.dataset.cmd === 'note') { noteOnSelection(); return; }
+    else if (b.dataset.cmd === 'note') { if (lockedEd) fmtEd.contentEditable = 'false'; noteOnSelection(); return; }
     else document.execCommand(b.dataset.cmd);
+    if (lockedEd) { fmtEd.contentEditable = 'false'; }
     fmtEd?.dispatchEvent(new Event('input', { bubbles: true }));
     if (s.rangeCount) fmtRange = s.getRangeAt(0).cloneRange();
   });
@@ -744,6 +754,16 @@ export function initDesk(ctx) {
       else drag = { mode: 'ink', it, pts: [markPoint(it, e.clientX, e.clientY)], path: null, moved: true };
       vp.setPointerCapture(e.pointerId); return;
     }
+    if (itEl && byId(itEl.dataset.id)?.locked && tool !== 'string') {
+      const it = byId(itEl.dataset.id);
+      if (e.target.closest('.unlock')) { // the only way to unlock
+        e.preventDefault(); eatMouse = true; delete it.locked; place(it); if (it.type === 'line') paintLine(it);
+        select(it.id); save(); toast('Unlocked'); return;
+      }
+      // Text stays selectable (to highlight or tie a note); anything else acts like the board.
+      if (e.target.closest('[contenteditable], .textLayer span') && !e.shiftKey) { if (sel.size) setSel([]); return; }
+      document.activeElement?.blur?.(); select(null); startPan(e); return;
+    }
     if (itEl) {
       const it = byId(itEl.dataset.id);
       if (tool === 'string') {
@@ -801,7 +821,7 @@ export function initDesk(ctx) {
       const r = vp.getBoundingClientRect(), x1 = Math.min(e.clientX, drag.sx), y1 = Math.min(e.clientY, drag.sy), x2 = Math.max(e.clientX, drag.sx), y2 = Math.max(e.clientY, drag.sy);
       Object.assign(drag.box.style, { left: x1 - r.left + 'px', top: y1 - r.top + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' });
       const a = toWorld(x1, y1), b = toWorld(x2, y2);
-      const hit = board.items.filter((i) => i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id);
+      const hit = board.items.filter((i) => !i.locked && i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id);
       setSel([...new Set([...drag.base, ...hit])]);
     }
     else if (drag.mode === 'resize') {
@@ -932,7 +952,7 @@ export function initDesk(ctx) {
     if (e.key === 't') setTool('string');
     if (e.key === '0' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fitAll(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'd' && sel.size) { e.preventDefault(); duplicateSel(); }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); setSel(board.items.map((i) => i.id)); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); setSel(board.items.filter((i) => !i.locked).map((i) => i.id)); }
     const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it && !it.locked) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
   });
