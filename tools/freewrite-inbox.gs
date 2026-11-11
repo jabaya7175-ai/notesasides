@@ -11,9 +11,8 @@
 const SUPABASE_URL = 'https://cxsyqbvcqkuiidmcqrxo.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_TrZODnGJTHB6gggwhxdYtA_JhpgUX5T';
 const INBOX_KEY = 'PASTE-INBOX-KEY-HERE';
-// Only import mail from these senders (lowercase, partial matches allowed).
-// Leave empty to import everything that arrives at this address.
-const ALLOWED_SENDERS = [];
+// Only Freewrite drafts (sent by Postbox) are imported; other mail is left alone.
+const SENDER = 'postbox@getfreewrite.com';
 
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
@@ -23,12 +22,13 @@ function setup() {
 
 function checkInbox() {
   const label = GmailApp.getUserLabelByName('Imported') || GmailApp.createLabel('Imported');
-  const threads = GmailApp.search('in:inbox is:unread', 0, 20);
+  // Not limited to the inbox: a Gmail filter archives these so they don't notify.
+  const threads = GmailApp.search('from:' + SENDER + ' is:unread', 0, 20);
   threads.forEach((thread) => {
     thread.getMessages().forEach((m) => {
       if (!m.isUnread()) return;
       const from = m.getFrom();
-      if (ALLOWED_SENDERS.length && !ALLOWED_SENDERS.some((s) => from.toLowerCase().includes(s))) return;
+      if (!from.toLowerCase().includes(SENDER)) return;
       const draft = readDraft(m);
       if (!draft.markdown.trim()) { m.markRead(); return; }
       const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/freewrite_inbox', {
@@ -43,21 +43,26 @@ function checkInbox() {
   });
 }
 
-// A .md/.txt attachment wins; otherwise the plain-text body. Title: the first
-// "# " heading, else the subject, else the first line.
+// Postbox emails: the subject is the draft title; the body repeats the title,
+// then the text (every return on the Freewrite is a new paragraph), then a dashed
+// line and "Sent from …'s Freewrite". A .md/.txt attachment, if any, wins.
 function readDraft(m) {
   let text = '';
   const att = m.getAttachments().find((a) => /\.(md|markdown|txt)$/i.test(a.getName()) || /^text\//.test(a.getContentType()));
   if (att) text = att.getDataAsString('UTF-8');
   else text = m.getPlainBody() || '';
-  text = text.replace(/\r/g, '').replace(/\n-- ?\n[\s\S]*$/, '').replace(/\n+Sent (from|with) [^\n]*\s*$/i, '').trim();
-  // Freewrite drafts often use single returns between paragraphs.
-  if (!/\n\s*\n/.test(text)) text = text.replace(/\n/g, '\n\n');
-  const h = text.match(/^#\s+(.+)$/m);
+  text = text.replace(/\r/g, '')
+    .replace(/\n[ \t]*-{5,}[ \t]*\n[\s\S]*$/, '')                       // footer after the dashed line
+    .replace(/^.*Sent (from|with) .*Freewrite.*$/gim, '')
+    .replace(/^Heads up: this copy last synced[\s\S]*?(\n\s*\n|$)/im, '')
+    .trim();
   const subject = m.getSubject().replace(/^(fwd?|re):\s*/i, '').trim();
-  const title = h ? h[1].trim() : subject || (text.split('\n')[0] || 'Untitled').slice(0, 120);
-  if (!h && title && !subject) text = text.split('\n').slice(1).join('\n').trim();
-  return { title, markdown: text };
+  let lines = text.split('\n');
+  const h = lines[0] && lines[0].match(/^#\s+(.+)$/);
+  const title = h ? h[1].trim() : subject || (lines[0] || 'Untitled').slice(0, 120);
+  if (h || (lines[0] || '').trim() === title || (!subject && lines.length)) lines.shift();
+  const markdown = lines.map((l) => l.trim()).filter(Boolean).join('\n\n');
+  return { title, markdown };
 }
 
 // Same converter the Studio uses.
