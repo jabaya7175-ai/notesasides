@@ -138,5 +138,5 @@ export function mastheadHTML(base, sections = [], { archive = 'archive/' } = {})
   return `<header class="mast"><div class="mast-strip"><span>${esc(today)}</span><span>Est. 2026</span></div>
   <h1 class="mast-name"><a href="${base}">Notes &amp; Asides.</a></h1>
   <p class="mast-tag">A blog of conservative thought and Reformed musings.</p>
-  <nav class="mast-nav">${sections.map((s) => `<a href="${base}${archive}?s=${encodeURIComponent(s)}">${esc(s)}</a>`).join('')}<a href="${base}${archive}">Archive</a><a href="${base}about/">About</a><a href="#subscribe" class="sub">Subscribe</a></nav></header>`;
+  <nav class="mast-nav">${sections.map((s) => `<a href="${base}${archive}?s=${encodeURIComponent(s)}">${esc(s)}</a>`).join('')}<a href="${base}about/">About</a><a href="#subscribe" class="sub">Subscribe</a></nav></header>`;
 }

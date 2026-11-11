@@ -24,7 +24,7 @@ const panel = (label, years, k, caption, title, when, text, feats) => `<div clas
 <div><h3>${title}</h3><p class="when">${when}</p><p>${text}</p><ul>${feats.map(([a, b]) => `<li><b>${a}.</b> ${b}</li>`).join('')}</ul></div></div>`;
 
 const ARCH = {
-  id: 'd0', slug: 'six-ways-to-hold-up-a-roof', kind: 'essay', section: 'Architecture',
+  id: 'd0', slug: 'six-ways-to-hold-up-a-roof', kind: 'essay', section: 'Architecture & Aesthetics',
   title: 'Six Ways to Hold Up a Roof',
   subtitle: 'A walk through the great styles of Western architecture, and what each one believed about the people standing underneath.',
   published_at: '2026-11-10T15:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: { on: true, lines: 3, weight: 400, color: 'var(--ink)', frame: 'orn-double' },
@@ -95,7 +95,7 @@ ${panel('Gothic Revival', '1740–1900', 'schinkel', 'Gothic Cathedral by the Wa
 
 const EXTRA = [
   {
-    id: 'd6', slug: 'the-whitewashed-church', kind: 'essay', section: 'Theology',
+    id: 'd6', slug: 'the-whitewashed-church', kind: 'essay', section: 'Theology & Philosophy',
     title: 'The Whitewashed Church',
     subtitle: 'What Saenredam saw in the plain walls of the Reformation, and why plainness is not the same as poverty.',
     published_at: '2026-11-05T15:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: { on: true, lines: 3, weight: 400, color: 'var(--ink)', frame: '' },
@@ -107,7 +107,7 @@ const EXTRA = [
     notes: [],
   },
   {
-    id: 'd7', slug: 'wrens-second-chance', kind: 'essay', section: 'Architecture',
+    id: 'd7', slug: 'wrens-second-chance', kind: 'essay', section: 'Architecture & Aesthetics',
     title: 'Wren’s Second Chance',
     subtitle: 'London burned in 1666. What its rebuilding teaches about plans, patience and the cathedral that got built anyway.',
     published_at: '2026-10-30T15:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: { on: true, lines: 2, weight: 400, color: 'var(--ink)', frame: 'orn-box' },
@@ -121,7 +121,7 @@ const EXTRA = [
 
 export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1), 
   {
-    id: 'd1', slug: 'on-the-uses-of-the-margin', section: 'Books', kind: 'review',
+    id: 'd1', slug: 'on-the-uses-of-the-margin', section: 'Architecture & Aesthetics', kind: 'review',
     title: 'On the Uses of the Margin',
     subtitle: "Ruskin, the Gothic, and why a writer's asides deserve a place beside the text.",
     published_at: '2026-11-09T14:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: dc('orn-double', 3),
@@ -143,7 +143,7 @@ export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1),
     ],
   },
   {
-    id: 'd2', slug: 'the-oculus', section: 'Architecture', kind: 'essay',
+    id: 'd2', slug: 'the-oculus', section: 'Architecture & Aesthetics', kind: 'essay',
     title: 'The Oculus',
     subtitle: 'On a building that keeps its roof open to the weather, and what it teaches about attention.',
     published_at: '2026-11-02T14:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: dc('', 3),
@@ -157,7 +157,7 @@ export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1),
     notes: [{ id: 'a', body: 'The oculus is roughly 8.2 metres (27 ft) across. Sample text for the demonstration site.' }],
   },
   {
-    id: 'd3', slug: 'above-the-fog', section: 'Culture', kind: 'essay',
+    id: 'd3', slug: 'above-the-fog', section: 'Architecture & Aesthetics', kind: 'essay',
     title: 'Above the Fog',
     subtitle: 'The sublime and the beautiful are not the same thing, and confusing them has consequences.',
     published_at: '2026-10-26T14:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: dc('orn-box', 2),
@@ -169,7 +169,7 @@ export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1),
     notes: [{ id: 'a', body: 'The classic statement is Edmund Burke, <i>A Philosophical Enquiry into the Origin of Our Ideas of the Sublime and Beautiful</i> (1757).' }],
   },
   {
-    id: 'd4', slug: 'measuring-the-world', section: 'Vocation', kind: 'essay',
+    id: 'd4', slug: 'measuring-the-world', section: 'Theology & Philosophy', kind: 'essay',
     title: 'Measuring the World',
     subtitle: 'A note on vocation, from a painting of a man with a pair of dividers.',
     published_at: '2026-10-19T14:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: dc('', 3),
@@ -181,7 +181,7 @@ export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1),
     notes: [],
   },
   {
-    id: 'd5', slug: 'aristotle-on-poetry', section: 'Books', kind: 'review',
+    id: 'd5', slug: 'aristotle-on-poetry', section: 'Architecture & Aesthetics', kind: 'review',
     title: 'What the Philosopher Saw in Homer',
     subtitle: "Rereading the Poetics: plot, character, and why stories need endings.",
     published_at: '2026-10-12T14:00:00Z', paragraph_style: 'book', align: 'ragged', drop_cap: dc('orn-double', 3),

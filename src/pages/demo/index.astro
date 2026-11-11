@@ -3,11 +3,12 @@ import Site from '../../layouts/Site.astro';
 import SubscribeBand from '../../components/SubscribeBand.astro';
 import { magazineHTML, mastheadHTML } from '../../lib/render.js';
 import { demoListRows } from '../../lib/demo.js';
+import { SECTIONS } from '../../lib/config.js';
 const base = import.meta.env.BASE_URL;
 ---
 <Site title="Demo" bare>
   <div class="demo-banner">Demo: sample essays to show the design. <a href={base}>Back to the real site</a></div>
-  <Fragment set:html={mastheadHTML(base, ['Architecture', 'Theology', 'Books', 'Culture'], { archive: 'demo/archive/' })} />
+  <Fragment set:html={mastheadHTML(base, SECTIONS, { archive: 'demo/archive/' })} />
   <div class="mag"><Fragment set:html={magazineHTML(demoListRows(), base, { prefix: 'demo/p/' })} /></div>
   <SubscribeBand />
 </Site>

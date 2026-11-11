@@ -4,4 +4,6 @@ export const SUPABASE_URL = 'https://cxsyqbvcqkuiidmcqrxo.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_TrZODnGJTHB6gggwhxdYtA_JhpgUX5T';
 export const AUTHOR = 'Joshua A. Abaya';
 export const PUBLICATION = 'Notes & Asides.';
+// Sections shown in the navigation and assignable to posts in the Studio.
+export const SECTIONS = ['Architecture & Aesthetics', 'Theology & Philosophy'];
 export const TAGLINE = 'A blog of conservative thought and Reformed musings.';

@@ -1,6 +1,6 @@
 ---
 import '../styles/site.css';
-import { PUBLICATION, TAGLINE, AUTHOR } from '../lib/config.js';
+import { PUBLICATION, TAGLINE, AUTHOR, SECTIONS } from '../lib/config.js';
 const { title, description = TAGLINE, current = '', bare = false } = Astro.props;
 const base = import.meta.env.BASE_URL;
 const pageTitle = title ? `${title} · ${PUBLICATION}` : `${PUBLICATION} — ${TAGLINE}`;
@@ -26,7 +26,7 @@ const pageTitle = title ? `${title} · ${PUBLICATION}` : `${PUBLICATION} — ${T
   {!bare && <header class="site">
     <a class="wordmark" href={base}>Notes &amp; Asides.</a>
     <nav>
-      <a href={`${base}archive/`} aria-current={current === 'archive' ? 'page' : undefined}>Archive</a>
+      {SECTIONS.map((s) => <a href={`${base}archive/?s=${encodeURIComponent(s)}`}>{s}</a>)}
       <a href={`${base}about/`} aria-current={current === 'about' ? 'page' : undefined}>About</a>
       <a href={`${base}#subscribe`}>Subscribe</a>
     </nav>
