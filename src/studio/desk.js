@@ -1519,21 +1519,42 @@ export function initDesk(ctx) {
     const box = els.get(it.id)?.querySelector('.vd-paste'); if (box) { box.hidden = false; box.querySelector('textarea').focus(); }
     if (it.h < SIZES.video[1] + 150) { it.h = SIZES.video[1] + 170; place(it); }
   }
-  // Text copied from YouTube's "Show transcript" panel: timestamps on their own lines, text after each.
+  // Text copied from YouTube's "Show transcript" panel. YouTube glues each time to a spoken
+  // copy of it and then the text ("1:081 minute, 8 secondsHoly Post is…"), often with no line
+  // breaks, and mixes in chapter titles ("Chapter 2: Theme Song"). Every time stamp starts a new
+  // line; chapters become headings. Plain "0:05" lines (or "0:05 text") work too.
+  const DUR = '\\d+ (?:hours?|minutes?|seconds?)(?:,? \\d+ (?:hours?|minutes?|seconds?))*';
+  const toSec = (t) => t.split(':').reduce((a, v) => a * 60 + +v, 0);
   function parsePastedTranscript(text) {
-    const ts = /^(\d{1,2}:)?\d{1,2}:\d{2}$/, toSec = (t) => t.split(':').reduce((a, v) => a * 60 + +v, 0);
-    const out = []; let cur = null;
-    for (const raw of String(text).replace(/\r/g, '').split('\n')) {
+    text = String(text).replace(/\r/g, '');
+    const hits = [...text.matchAll(new RegExp(`((?:\\d{1,2}:)?\\d{1,2}:\\d{2})(${DUR})`, 'g'))];
+    if (hits.length >= 2) {
+      const out = []; let pending = text.slice(0, hits[0].index).replace(/\s+/g, ' ').trim();
+      hits.forEach((h, i) => {
+        const end = i + 1 < hits.length ? hits[i + 1].index : text.length;
+        let t = text.slice(h.index + h[0].length, end).replace(/\s+/g, ' ').trim(), chap = null;
+        const m = t.match(/\s*(Chapter \d+\s*:.*)$/); if (m) { chap = m[1].trim(); t = t.slice(0, m.index).trim(); }
+        if (pending) { out.push({ chapter: pending }); pending = ''; }
+        if (t) out.push({ s: toSec(h[1]), t });
+        if (chap) pending = chap;
+      });
+      if (pending) out.push({ chapter: pending });
+      return out;
+    }
+    const ts = /^(\d{1,2}:)?\d{1,2}:\d{2}$/, out = []; let cur = null;
+    for (const raw of text.split('\n')) {
       const l = raw.trim(); if (!l) continue;
+      if (/^Chapter \d+\s*:/.test(l)) { out.push({ chapter: l }); cur = null; continue; }
       if (ts.test(l)) { cur = { s: toSec(l), t: '' }; out.push(cur); continue; }
       const inline = l.match(/^((?:\d{1,2}:)?\d{1,2}:\d{2})\s+(.+)$/);
       if (inline) { cur = { s: toSec(inline[1]), t: inline[2] }; out.push(cur); continue; }
-      if (/^\d+ (seconds?|minutes?|hours?)(, \d+ (seconds?|minutes?))*$/i.test(l)) continue; // screen-reader duplicates
+      if (new RegExp(`^${DUR}$`, 'i').test(l)) continue; // spoken duplicate of the time
       if (!cur) { cur = { s: -1, t: '' }; out.push(cur); }
       cur.t += (cur.t ? ' ' : '') + l;
     }
-    return out.filter((x) => x.t);
+    return out.filter((x) => x.chapter || x.t);
   }
+
   // Turn caption lines into readable speaker turns. Captions mark a change of speaker with
   // ">>" (or a leading dash) and sometimes name the speaker ("JOHN SMITH:"). Unnamed speakers
   // alternate as Speaker 1 / Speaker 2; click a name on the sheet to rename it everywhere.
@@ -1542,6 +1563,7 @@ export function initDesk(ctx) {
     const NAMED = /^((?:\p{Lu}[\p{L}.'’-]*\s?){1,3}|[\p{Lu} .'’-]{2,32}):\s+/u, NOT_NAME = /^(And|But|So|Well|Yes|No|Now|Then|Here|Note|Question|Answer)\b/;
     const turns = []; let cur = null, changes = 0;
     for (const l of lines) {
+      if (l.chapter) { turns.push({ chapter: l.chapter, parts: [] }); cur = null; continue; }
       let t = String(l.t).replace(/\s+/g, ' ').trim(), who = null, change = false;
       if (/^(>>|&gt;&gt;|[-–—])\s*/.test(t)) { change = true; t = t.replace(/^(>>|&gt;&gt;|[-–—])\s*/, ''); }
       const m = t.match(NAMED);
@@ -1551,13 +1573,13 @@ export function initDesk(ctx) {
       t = t.replace(/>>/g, '').trim(); if (t) cur.parts.push({ s: l.s, t });
     }
     let alt = 0;
-    turns.forEach((tn) => { if (!tn.who && changes) tn.who = `Speaker ${(alt++ % 2) + 1}`; });
+    turns.forEach((tn) => { if (!tn.chapter && !tn.who && changes) tn.who = `Speaker ${(alt++ % 2) + 1}`; });
     // Each caption segment stays its own line, exactly as YouTube lists them.
     const paras = (tn) => tn.parts.map((part) => ({ s: part.s, t: part.t }));
     const cap = (x) => x.replace(/\[(music|applause|laughter|inaudible)[^\]]*\]/gi, (m) => `<i>${m}</i>`);
     const ts = (sec) => sec >= 0 ? `<a class="ts" data-t="${Math.floor(sec)}" href="https://www.youtube.com/watch?v=${escH(vid)}&amp;t=${Math.floor(sec)}s" title="Play from here">${fmtTs(sec)}</a>` : '';
     return `<div class="tr" data-v="${escH(vid)}">${note ? `<p class="src"><i>${escH(note)}</i></p>` : ''}` +
-      turns.filter((tn) => tn.parts.length).map((tn) => `<section class="tr-turn">${tn.who ? `<h4 class="tr-who" data-who="${escH(tn.who)}" title="Click to rename this speaker">${escH(tn.who)}</h4>` : ''}` +
+      turns.filter((tn) => tn.parts.length || tn.chapter).map((tn) => tn.chapter ? `<h3 class="tr-ch">${escH(tn.chapter)}</h3>` : `<section class="tr-turn">${tn.who ? `<h4 class="tr-who" data-who="${escH(tn.who)}" title="Click to rename this speaker">${escH(tn.who)}</h4>` : ''}` +
         paras(tn).map((p) => `<p>${ts(p.s)}${cap(escH(p.t))}</p>`).join('') + '</section>').join('') + '</div>';
   }
   function makeTranscriptSheet(v, lines, title, auto) {
@@ -1570,18 +1592,24 @@ export function initDesk(ctx) {
   // Older transcript sheets (one paragraph per time stamp) are rebuilt into speaker turns.
   function upgradeTranscript(it) {
     const tmp = document.createElement('div'); tmp.innerHTML = it.html || '';
-    if (tmp.querySelector('.tr')) return;
-    const lines = []; let vid = it.vid || '';
-    tmp.querySelectorAll('p').forEach((p) => {
-      if (p.classList.contains('src')) return;
-      const a = p.querySelector('a.ts'); let s = -1;
-      if (a) { s = +(a.getAttribute('href').match(/[?&]t=(\d+)/) || [])[1] || 0; vid ||= (a.getAttribute('href').match(/v=([\w-]{11})/) || [])[1] || ''; a.remove(); }
-      const t = p.textContent.trim(); if (t) lines.push({ s, t });
-    });
-    if (!lines.length || !vid) return;
     const note = tmp.querySelector('.src')?.textContent.trim() || '';
-    it.html = transcriptHtml(vid, lines, note); it.vid = vid;
+    tmp.querySelectorAll('.src').forEach((n) => n.remove());
+    let vid = it.vid || tmp.querySelector('.tr')?.dataset.v || (tmp.innerHTML.match(/v=([\w-]{11})/) || [])[1] || '';
+    if (!vid) { const l = board.links.find((x) => x.b === it.id && byId(x.a)?.type === 'video') || board.links.find((x) => x.a === it.id && byId(x.b)?.type === 'video'); const v = l && byId(l.b === it.id ? l.a : l.b); vid = v?.vid || ''; }
+    if (!vid) return;
+    // Text that still carries YouTube's glued time stamps: split it properly.
+    const flat = tmp.textContent;
+    if ((flat.match(new RegExp(`\\d:\\d{2}${DUR}`, 'g')) || []).length >= 3) { it.html = transcriptHtml(vid, parsePastedTranscript(flat), note); it.vid = vid; return; }
+    if (tmp.querySelector('.tr')) return;
+    const lines = [];
+    tmp.querySelectorAll('p').forEach((p) => {
+      const a = p.querySelector('a.ts'); let sec = -1;
+      if (a) { sec = +(a.getAttribute('href').match(/[?&]t=(\d+)/) || [])[1] || 0; a.remove(); }
+      const t = p.textContent.trim(); if (t) lines.push({ s: sec, t });
+    });
+    if (lines.length) { it.html = transcriptHtml(vid, lines, note); it.vid = vid; }
   }
+
   // Transcript tool: link + (optional) pasted text → video card and transcript sheet, tied together.
   $('trCancel').onclick = () => { $('trRow').hidden = true; };
   $('trGo').onclick = async () => {
@@ -1809,7 +1837,7 @@ export function initDesk(ctx) {
     board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove()); world.classList.remove('gsel');
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
-    board.items.forEach((i) => { if (i.type === 'sheet' && i.collapsible && /class="ts"/.test(i.html || '')) upgradeTranscript(i); });
+    board.items.forEach((i) => { if (i.type === 'sheet' && (i.collapsible || /^Transcript:/.test(i.title || ''))) upgradeTranscript(i); });
     board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
     board.items.forEach((i) => { if (i.rot) i.rot = 0; }); // every piece sits square
     selected = null; sel = new Set(); selLink = null;

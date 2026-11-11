@@ -511,6 +511,8 @@ body.previewing #preview{display:block}
 .it.sheet.collapsed .page{overflow:hidden}
 /* Transcripts: speaker turns, hanging time stamps that play the video */
 .sh-body .tr-turn{margin:0 0 1.1em}
+.sh-body .tr-ch{margin:1.3em 0 .5em;font-size:15px;font-weight:700;color:#1E2836;border-bottom:1px solid rgba(30,40,54,.15);padding-bottom:.2em}
+.sh-body .tr > .tr-ch:first-child,.sh-body .tr > .src + .tr-ch{margin-top:.2em}
 .sh-body .tr-who{margin:0 0 .25em;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7A1A17;cursor:pointer;display:inline-block;border-radius:3px;padding:0 3px;margin-left:-3px}
 .sh-body .tr-who:hover{background:rgba(122,26,23,.08)}
 .sh-body .tr-who[contenteditable=true]{background:#FFF;outline:1px solid #E9C46A;text-transform:none;letter-spacing:0;cursor:text}
