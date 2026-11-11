@@ -111,6 +111,14 @@ export function initDesk(ctx) {
     v.x = cx - r.left - wx * nz; v.y = cy - r.top - wy * nz; v.z = nz;
     touchView(); if (persist) saveView();
   }
+  // Photoshop's zoom levels.
+  const STEPS = [0.1, 0.125, 0.167, 0.25, 0.333, 0.5, 0.667, 1, 1.5, 2, 3];
+  function stepZoom(dir, cx, cy) {
+    const z = view().z;
+    const next = dir > 0 ? (STEPS.find((v) => v > z * 1.01) || MAX_Z) : ([...STEPS].reverse().find((v) => v < z * 0.99) || MIN_Z);
+    if (cx == null) [cx, cy] = vpCenter();
+    zoomAt(next, cx, cy);
+  }
   const vpCenter = () => { const r = vp.getBoundingClientRect(); return [r.left + vp.clientWidth / 2, r.top + vp.clientHeight / 2]; };
   function fitAll() {
     if (!board.items.length) { board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 }; applyView(); return; }
@@ -717,7 +725,8 @@ export function initDesk(ctx) {
     document.querySelectorAll('#deskTools [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
     vp.classList.toggle('tying', t === 'string');
     vp.classList.toggle('drawing', ['text', 'line', 'rect', 'ellipse'].includes(t));
-    $('deskHint').textContent = { string: 'Click a piece, then another, to tie them with string. Esc to stop.', text: 'Click where the text should go.', line: 'Drag to draw a line. Hold Shift to keep it straight.', rect: 'Drag to draw a box. Hold Shift for a square.', ellipse: 'Drag to draw an ellipse. Hold Shift for a circle.' }[t] || '';
+    vp.classList.toggle('handtool', t === 'hand'); vp.classList.toggle('zoomtool', t === 'zoom');
+    $('deskHint').textContent = { hand: 'Drag to move around the board. Double-click the Hand to fit everything.', zoom: 'Click to zoom in, Alt-click to zoom out, or drag left and right.', string: 'Click a piece, then another, to tie them with string. Esc to stop.', text: 'Click where the text should go.', line: 'Drag to draw a line. Hold Shift to keep it straight.', rect: 'Drag to draw a box. Hold Shift for a square.', ellipse: 'Drag to draw an ellipse. Hold Shift for a circle.' }[t] || '';
   }
   document.querySelectorAll('#deskTools [data-tool]').forEach((b) => b.onclick = () => {
     const t = b.dataset.tool, c = viewCenter(), jitter = () => (Math.random() - 0.5) * 120;
@@ -735,8 +744,12 @@ export function initDesk(ctx) {
   $('linkAdd').onclick = addFromLinkRow;
   $('linkInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addFromLinkRow(); if (e.key === 'Escape') $('linkRow').hidden = true; });
   $('deskImgInput').onchange = async () => { const files = [...$('deskImgInput').files]; $('deskImgInput').value = ''; const c = viewCenter(); for (const f of files) await dropImage(f, c.x, c.y); };
-  $('zoomIn').onclick = () => zoomAt(view().z * 1.25, ...vpCenter());
-  $('zoomOut').onclick = () => zoomAt(view().z / 1.25, ...vpCenter());
+  $('zoomIn').onclick = () => stepZoom(1);
+  $('zoomOut').onclick = () => stepZoom(-1);
+  $('zoomPct').ondblclick = () => zoomAt(1, ...vpCenter());
+  // Photoshop: double-click the Hand to fit everything, the Zoom tool for 100%.
+  document.querySelector('#deskTools [data-tool=hand]').ondblclick = fitAll;
+  document.querySelector('#deskTools [data-tool=zoom]').ondblclick = () => zoomAt(1, ...vpCenter());
   $('zoomFit').onclick = fitAll;
 
   /* ------------------------------------------------------------ pointer: pan, move, resize, bend, tie */
@@ -763,6 +776,12 @@ export function initDesk(ctx) {
       const l = board.links.find((x) => x.id === lk.dataset.id);
       drag = { mode: 'bend', l, sx: e.clientX, sy: e.clientY, moved: false }; vp.setPointerCapture(e.pointerId); return;
     }
+    const zoomish = tool === 'zoom' || (spaceDown && (e.ctrlKey || e.metaKey || e.altKey));
+    if (zoomish) {
+      e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
+      drag = { mode: 'zoomdrag', sx: e.clientX, sy: e.clientY, z0: view().z, out: e.altKey, moved: false }; vp.setPointerCapture(e.pointerId); return;
+    }
+    if (tool === 'hand' || spaceDown) { e.preventDefault(); startPan(e); return; }
     // Drawing tools work anywhere on the board, over pieces too.
     if (tool === 'text' || tool === 'line' || tool === 'rect' || tool === 'ellipse') {
       e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
@@ -779,7 +798,6 @@ export function initDesk(ctx) {
       const it = byId(lend.closest('.it').dataset.id), [a, b] = lineEnds(it);
       drag = { mode: 'lineEnd', it, end: +lend.dataset.end, fixed: +lend.dataset.end ? a : b, moved: true }; vp.setPointerCapture(e.pointerId); return;
     }
-    if (spaceDown) { e.preventDefault(); startPan(e); return; }
     const itEl = e.target.closest('.it');
     if (itEl && ink && itEl.dataset.id === ink.id && e.target.closest('.pdf-pg')) {
       e.preventDefault(); eatMouse = true;
@@ -795,6 +813,7 @@ export function initDesk(ctx) {
         select(it.id); save(); toast('Unlocked'); return;
       }
       // Text stays selectable (to highlight or tie a note); anything else acts like the board.
+      if (e.target.closest('a.ts')) return;
       if (e.target.closest('[contenteditable], .textLayer span') && !e.shiftKey) { if (sel.size) setSel([]); return; }
       document.activeElement?.blur?.(); if (spaceDown) startPan(e); else startMarquee(e); return;
     }
@@ -821,7 +840,7 @@ export function initDesk(ctx) {
         drag = { mode: 'resize', it, hd: e.target.dataset.h || 'se', sx: e.clientX, sy: e.clientY, x: it.x, y: it.y, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
-      if (!e.shiftKey && e.target.closest('input, button, select, a, textarea, iframe')) return;
+      if (!e.shiftKey && e.target.closest('input, button, select, a, textarea, iframe, .tr-who')) return;
       if (it.type === 'pdf' && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.textLayer')) return; // select the PDF's text
       if (it.readonly && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.sh-body')) return; // select a clipped article's text
       const ed = !e.shiftKey && e.target.closest('[contenteditable]');
@@ -846,8 +865,11 @@ export function initDesk(ctx) {
   addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || !board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea, select, button')) return;
     e.preventDefault(); if (!spaceDown) { spaceDown = true; vp.classList.add('space'); }
+    vp.classList.toggle('zoomin', e.ctrlKey || e.metaKey); vp.classList.toggle('zoomout', e.altKey);
   });
-  addEventListener('keyup', (e) => { if (e.code === 'Space') { spaceDown = false; vp.classList.remove('space'); } });
+  addEventListener('keyup', (e) => { if (e.code === 'Space') { spaceDown = false; vp.classList.remove('space', 'zoomin', 'zoomout'); } });
+  addEventListener('keydown', (e) => { if (spaceDown) { vp.classList.toggle('zoomin', e.ctrlKey || e.metaKey); vp.classList.toggle('zoomout', e.altKey); } if (tool === 'zoom') vp.classList.toggle('zoomout', e.altKey); });
+  addEventListener('keyup', (e) => { if (spaceDown || tool === 'zoom') { vp.classList.toggle('zoomin', spaceDown && (e.ctrlKey || e.metaKey)); vp.classList.toggle('zoomout', e.altKey); } });
   function startPan(e) { drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, x: view().x, y: view().y, moved: true }; vp.classList.add('panning'); vp.setPointerCapture(e.pointerId); }
   vp.addEventListener('pointermove', (e) => {
     if (!drag) return;
@@ -858,6 +880,7 @@ export function initDesk(ctx) {
       if (drag.mode === 'move') { drag.group.forEach((g) => g.el?.classList.add('dragging')); if (world.contains(document.activeElement)) document.activeElement.blur(); }
     }
     if (drag.mode === 'pan') { view().x = drag.x + dx; view().y = drag.y + dy; touchView(); }
+    else if (drag.mode === 'zoomdrag') { zoomAt(drag.z0 * Math.exp(dx * 0.008), drag.sx, drag.sy, false); }
     else if (drag.mode === 'move') { drag.group.forEach((g) => { g.it.x = Math.round(g.x + dx / z); g.it.y = Math.round(g.y + dy / z); touchItem(g.it.id); }); }
     else if (drag.mode === 'marquee') {
       const r = vp.getBoundingClientRect(), x1 = Math.min(e.clientX, drag.sx), y1 = Math.min(e.clientY, drag.sy), x2 = Math.max(e.clientX, drag.sx), y2 = Math.max(e.clientY, drag.sy);
@@ -963,6 +986,7 @@ export function initDesk(ctx) {
       if (sel.size > 1) select(d.it.id); // a plain click inside a group picks that one piece
       if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
     }
+    if (d.mode === 'zoomdrag') { if (!d.moved) stepZoom(d.out || e?.altKey ? -1 : 1, d.sx, d.sy); else saveView(); return; }
     if (d.mode === 'pan') saveView(); else if (d.moved && d.mode !== 'marquee') save();
   };
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
@@ -977,7 +1001,9 @@ export function initDesk(ctx) {
     const sc = e.target.closest('.page, .nt-body, .q-body, .pdf-scroll'), host = e.target.closest('.it');
     if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel'))) return; // scroll the selected piece's text
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) zoomAt(view().z * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
+    // Photoshop: wheel scrolls up/down, Shift+wheel sideways, Alt or Ctrl+wheel (and pinch) zooms at the cursor.
+    if (e.ctrlKey || e.metaKey || e.altKey) zoomAt(view().z * Math.exp(-(e.deltaY || e.deltaX) * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
+    else if (e.shiftKey && !e.deltaX) { view().x -= e.deltaY; touchView(); saveView(); }
     else { view().x -= e.deltaX; view().y -= e.deltaY; touchView(); saveView(); }
   }, { passive: false });
   addEventListener('resize', () => { if (board) applyView(); });
@@ -991,7 +1017,14 @@ export function initDesk(ctx) {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L') && sel.size) { e.preventDefault(); toggleLock([...sel].some((i) => !byId(i)?.locked)); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && (sel.size || selLink)) { e.preventDefault(); removeSelected(); }
-    if (e.key === 'v') setTool('select');
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'v' || e.key === 'm') setTool('select');
+      if (e.key === 'h') setTool('hand');
+      if (e.key === 'z') setTool('zoom');
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); stepZoom(1); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === '-' || e.key === '_')) { e.preventDefault(); stepZoom(-1); }
+    if ((e.ctrlKey || e.metaKey) && e.key === '1') { e.preventDefault(); zoomAt(1, ...vpCenter()); }
     if (e.key === 't') setTool('string');
     if (e.key === '0' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fitAll(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'd' && sel.size) { e.preventDefault(); duplicateSel(); }
@@ -1320,20 +1353,102 @@ export function initDesk(ctx) {
     }
     return out.filter((x) => x.t);
   }
-  function makeTranscriptSheet(v, lines, title, auto) {
-    // Paragraphs of about 30 seconds (or 450 characters), each opening with its timestamp.
-    const paras = []; let p = null;
+  // Turn caption lines into readable speaker turns. Captions mark a change of speaker with
+  // ">>" (or a leading dash) and sometimes name the speaker ("JOHN SMITH:"). Unnamed speakers
+  // alternate as Speaker 1 / Speaker 2; click a name on the sheet to rename it everywhere.
+  const titleCase = (x) => x.toLowerCase().replace(/(^|[\s'’-])\p{L}/gu, (c) => c.toUpperCase());
+  function transcriptHtml(vid, lines, note) {
+    const NAMED = /^((?:\p{Lu}[\p{L}.'’-]*\s?){1,3}|[\p{Lu} .'’-]{2,32}):\s+/u, NOT_NAME = /^(And|But|So|Well|Yes|No|Now|Then|Here|Note|Question|Answer)\b/;
+    const turns = []; let cur = null, changes = 0;
     for (const l of lines) {
-      if (!p || (l.s >= 0 && p.s >= 0 && (l.s - p.s > 30 || p.t.length > 450))) { p = { s: l.s, t: '' }; paras.push(p); }
-      p.t += (p.t ? ' ' : '') + l.t;
+      let t = String(l.t).replace(/\s+/g, ' ').trim(), who = null, change = false;
+      if (/^(>>|&gt;&gt;|[-–—])\s*/.test(t)) { change = true; t = t.replace(/^(>>|&gt;&gt;|[-–—])\s*/, ''); }
+      const m = t.match(NAMED);
+      if (m && !NOT_NAME.test(m[1]) && m[1].trim().split(' ').length <= 3) { who = titleCase(m[1].trim()); t = t.slice(m[0].length); change = true; }
+      if (change) changes++;
+      if (!cur || change) { cur = { who, s: l.s, parts: [] }; turns.push(cur); }
+      t = t.replace(/>>/g, '').trim(); if (t) cur.parts.push({ s: l.s, t });
     }
-    const html = `<p class="src"><i>${escH(v.channel || 'YouTube')}${auto ? ' · automatic captions' : ''}</i></p>` +
-      paras.map((q) => `<p>${q.s >= 0 ? `<a class="ts" href="https://www.youtube.com/watch?v=${escH(v.vid)}&t=${Math.floor(q.s)}s" target="_blank" rel="noopener">${fmtTs(q.s)}</a> ` : ''}${escH(q.t)}</p>`).join('');
-    const [w] = paperSize('letter');
-    const sh = { id: uid(), type: 'sheet', paper: 'custom', w, h: Math.round(3.25 * IN), x: v.x + v.w + 96, y: v.y, z: ++zTop, rot: 0, title: `Transcript: ${title || 'YouTube video'}`, html, collapsible: true, collapsed: true, readonly: true };
-    board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: v.id, b: sh.id });
-    drawLinks(); setSel([sh.id]); save(); toast('Transcript added. Use “Show full transcript” at the bottom to open it.');
+    let alt = 0;
+    turns.forEach((tn) => { if (!tn.who && changes) tn.who = `Speaker ${(alt++ % 2) + 1}`; });
+    // Paragraphs: about three sentences, or about 40 seconds when the captions have no punctuation.
+    const paras = (tn) => {
+      const out = []; let p = null, sentences = 0;
+      for (const part of tn.parts) {
+        if (!p) { p = { s: part.s, t: '' }; out.push(p); sentences = 0; }
+        p.t += (p.t ? ' ' : '') + part.t;
+        sentences += (part.t.match(/[.!?…]["”’)]?(\s|$)/g) || []).length;
+        const long = part.s >= 0 && p.s >= 0 && part.s - p.s > 40;
+        if ((sentences >= 3 && /[.!?…]["”’)]?$/.test(part.t)) || (long && !/[,;:]$/.test(part.t) && p.t.length > 240)) p = null;
+      }
+      return out;
+    };
+    const cap = (x) => x.replace(/^\s*(\p{Ll})/u, (c) => c.toUpperCase()).replace(/\[(music|applause|laughter|inaudible)[^\]]*\]/gi, (m) => `<i>${m}</i>`);
+    const ts = (sec) => sec >= 0 ? `<a class="ts" data-t="${Math.floor(sec)}" href="https://www.youtube.com/watch?v=${escH(vid)}&amp;t=${Math.floor(sec)}s" title="Play from here">${fmtTs(sec)}</a>` : '';
+    return `<div class="tr" data-v="${escH(vid)}">${note ? `<p class="src"><i>${escH(note)}</i></p>` : ''}` +
+      turns.filter((tn) => tn.parts.length).map((tn) => `<section class="tr-turn">${tn.who ? `<h4 class="tr-who" data-who="${escH(tn.who)}" title="Click to rename this speaker">${escH(tn.who)}</h4>` : ''}` +
+        paras(tn).map((p) => `<p>${ts(p.s)}${cap(escH(p.t))}</p>`).join('') + '</section>').join('') + '</div>';
   }
+  function makeTranscriptSheet(v, lines, title, auto) {
+    const html = transcriptHtml(v.vid, lines, `${v.channel || 'YouTube'}${auto ? ' · automatic captions' : ''}`);
+    const [w] = paperSize('letter');
+    const sh = { id: uid(), type: 'sheet', paper: 'custom', w, h: Math.round(3.25 * IN), x: v.x + v.w + 96, y: v.y, z: ++zTop, rot: 0, title: `Transcript: ${title || 'YouTube video'}`, html, collapsible: true, collapsed: true, readonly: true, vid: v.vid };
+    board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: v.id, b: sh.id });
+    drawLinks(); setSel([sh.id]); save(); toast('Transcript added. Click a time to play the video from there.');
+  }
+  // Older transcript sheets (one paragraph per time stamp) are rebuilt into speaker turns.
+  function upgradeTranscript(it) {
+    const tmp = document.createElement('div'); tmp.innerHTML = it.html || '';
+    if (tmp.querySelector('.tr')) return;
+    const lines = []; let vid = it.vid || '';
+    tmp.querySelectorAll('p').forEach((p) => {
+      if (p.classList.contains('src')) return;
+      const a = p.querySelector('a.ts'); let s = -1;
+      if (a) { s = +(a.getAttribute('href').match(/[?&]t=(\d+)/) || [])[1] || 0; vid ||= (a.getAttribute('href').match(/v=([\w-]{11})/) || [])[1] || ''; a.remove(); }
+      const t = p.textContent.trim(); if (t) lines.push({ s, t });
+    });
+    if (!lines.length || !vid) return;
+    const note = tmp.querySelector('.src')?.textContent.trim() || '';
+    it.html = transcriptHtml(vid, lines, note); it.vid = vid;
+  }
+  // Click a time: play the video on the board from that moment.
+  function seekVideo(vid, t) {
+    const v = board.items.find((i) => i.type === 'video' && i.vid === vid);
+    if (!v) { open(`https://www.youtube.com/watch?v=${vid}&t=${t}s`, '_blank', 'noopener'); return; }
+    const el = els.get(v.id), f = el.querySelector('iframe');
+    f.src = `https://www.youtube-nocookie.com/embed/${vid}?rel=0&autoplay=1&start=${Math.floor(t)}`;
+    const r = el.getBoundingClientRect(), vr = vp.getBoundingClientRect();
+    if (r.right < vr.left + 40 || r.left > vr.right - 40 || r.bottom < vr.top + 40 || r.top > vr.bottom - 40) {
+      const z = view().z; board.view.x = vp.clientWidth / 2 - (v.x + v.w / 2) * z; board.view.y = vp.clientHeight / 2 - (v.y + v.h / 2) * z; touchView(); saveView();
+    }
+    el.classList.add('playing'); setTimeout(() => el.classList.remove('playing'), 900);
+  }
+  world.addEventListener('click', (e) => {
+    const a = e.target.closest('a.ts'); if (!a) return;
+    e.preventDefault();
+    const t = +a.dataset.t || +(a.getAttribute('href').match(/[?&]t=(\d+)/) || [])[1] || 0;
+    const vid = a.closest('.tr')?.dataset.v || (a.getAttribute('href').match(/v=([\w-]{11})/) || [])[1];
+    if (vid) seekVideo(vid, t);
+  });
+  // Click a speaker's name to rename them throughout the transcript.
+  world.addEventListener('click', (e) => {
+    const h = e.target.closest('.tr-who'); if (!h || h.isContentEditable) return;
+    const sheet = byId(h.closest('.it').dataset.id), old = h.dataset.who;
+    h.contentEditable = 'true'; h.focus(); getSelection().selectAllChildren(h);
+    const done = (keep) => {
+      h.contentEditable = 'false'; h.onblur = null; h.onkeydown = null;
+      const name = h.textContent.trim();
+      if (!keep || !name || name === old) { h.textContent = old; return; }
+      chainOf(sheet).forEach((pg) => {
+        const el = els.get(pg.id); if (!el) return;
+        el.querySelectorAll(`.tr-who[data-who="${CSS.escape(old)}"]`).forEach((x) => { x.textContent = name; x.dataset.who = name; });
+        pg.html = el.querySelector('.sh-body').innerHTML;
+      });
+      save(); toast(`Renamed “${old}” to “${name}”`);
+    };
+    h.onkeydown = (k) => { if (k.key === 'Enter') { k.preventDefault(); done(true); } if (k.key === 'Escape') done(false); };
+    h.onblur = () => done(true);
+  });
 
   /* ------------------------------------------------------------ links to articles */
   async function fetchLink(url, clip = false) {
@@ -1494,6 +1609,7 @@ export function initDesk(ctx) {
     board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove());
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
+    board.items.forEach((i) => { if (i.type === 'sheet' && i.collapsible && /class="ts"/.test(i.html || '')) upgradeTranscript(i); });
     board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
     board.links.forEach((l) => { if (l.anc) { const n = board.items.find((i) => i.id === l.a); if (n) n.rot = 0; } }); // tied notes sit square
     selected = null; sel = new Set(); selLink = null;

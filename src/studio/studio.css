@@ -504,7 +504,17 @@ body.previewing #preview{display:block}
 .it.sheet .more{all:unset;position:absolute;left:0;right:0;bottom:0;height:40px;text-align:center;line-height:40px;font-size:13px;letter-spacing:.06em;color:#7A1A17;cursor:pointer;background:linear-gradient(rgba(248,244,234,0),#F8F4EA 45%);z-index:3}
 .it.sheet .more:hover{color:#C0392B}
 .it.sheet.collapsed .page{overflow:hidden}
-.sh-body a.ts{font-size:12px;color:#2E6DB4;text-decoration:none;font-variant-numeric:lining-nums;margin-right:4px}
+/* Transcripts: speaker turns, hanging time stamps that play the video */
+.sh-body .tr-turn{margin:0 0 1.1em}
+.sh-body .tr-who{margin:0 0 .25em;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7A1A17;cursor:pointer;display:inline-block;border-radius:3px;padding:0 3px;margin-left:-3px}
+.sh-body .tr-who:hover{background:rgba(122,26,23,.08)}
+.sh-body .tr-who[contenteditable=true]{background:#FFF;outline:1px solid #E9C46A;text-transform:none;letter-spacing:0;cursor:text}
+.sh-body .tr p{position:relative;margin:0 0 .55em;line-height:1.55}
+.sh-body a.ts{position:absolute;left:-64px;width:52px;text-align:right;top:.2em;font-size:11.5px;line-height:1.4;color:#2E6DB4;text-decoration:none;font-variant-numeric:lining-nums tabular-nums;cursor:pointer;border-radius:3px}
+.sh-body a.ts:hover{background:rgba(46,109,180,.12);color:#1B4F8A}
+.sh-body a.ts::before{content:"▸ ";opacity:0;font-size:9px}
+.sh-body a.ts:hover::before{opacity:1}
+.it.video.playing{outline:3px solid #E9C46A;outline-offset:4px;transition:outline-color .8s}
 .desk-vp.space,.desk-vp.space *{cursor:grab!important}
 .desk-vp{cursor:default}
 /* Read-only sheets (clipped articles, transcripts): text selectable once selected */
@@ -518,6 +528,20 @@ body.previewing #preview{display:block}
 .desk-ask div{display:flex;gap:8px;justify-content:center}
 .desk-ask button{all:unset;cursor:pointer;padding:6px 12px;border:1px solid var(--rule);border-radius:7px;font-size:14.5px;color:var(--ink)}
 .desk-ask button:hover{border-color:#E9C46A;background:var(--hover)}
+/* Photoshop-style selection: thin frame, square handles, marching ants */
+.it.sel{outline:1px solid #3B9BFF;outline-offset:0}
+.it.rect.sel,.it.ellipse.sel{outline:1px solid #3B9BFF;outline-offset:0}
+.it > .rz{width:calc(8px * var(--inv,1));height:calc(8px * var(--inv,1));border-radius:0;background:#FFF;border:calc(1px * var(--inv,1)) solid #3B9BFF}
+.it.text > .rz{width:calc(8px * var(--inv,1));height:calc(8px * var(--inv,1));border-radius:0;background:#FFF;border:calc(1px * var(--inv,1)) solid #3B9BFF}
+.it .ln .lend{fill:#FFF;stroke:#3B9BFF}
+.desk-marquee{border:none!important;background-color:rgba(59,155,255,.06)!important;
+  background-image:linear-gradient(90deg,#FFF 50%,#000 50%),linear-gradient(90deg,#FFF 50%,#000 50%),linear-gradient(0deg,#FFF 50%,#000 50%),linear-gradient(0deg,#FFF 50%,#000 50%);
+  background-repeat:repeat-x,repeat-x,repeat-y,repeat-y;background-size:8px 1px,8px 1px,1px 8px,1px 8px;background-position:0 0,0 100%,0 0,100% 0;animation:ants .45s linear infinite}
+@keyframes ants{to{background-position:8px 0,-8px 100%,0 -8px,100% 8px}}
+.desk-vp.handtool,.desk-vp.handtool *{cursor:grab!important}
+.desk-vp.handtool.panning,.desk-vp.handtool.panning *,.desk-vp.space.panning *{cursor:grabbing!important}
+.desk-vp.zoomtool,.desk-vp.zoomtool *,.desk-vp.space.zoomin,.desk-vp.space.zoomin *{cursor:zoom-in!important}
+.desk-vp.zoomtool.zoomout,.desk-vp.zoomtool.zoomout *,.desk-vp.space.zoomout,.desk-vp.space.zoomout *{cursor:zoom-out!important}
 /* Formatting bar over selected text */
 .desk-fmt{position:absolute;z-index:8;display:flex;align-items:center;gap:3px;padding:5px 6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45)}
 .desk-fmt[hidden]{display:none}
