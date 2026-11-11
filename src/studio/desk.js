@@ -666,7 +666,8 @@ export function initDesk(ctx) {
   // A string is a quadratic curve between two pins. Its shape is set by the "apex"
   // (the curve's midpoint), stored as an offset from the straight-line midpoint so the
   // bend travels with the pieces. No offset = natural slack.
-  const pinOf = (it) => ({ x: it.x + it.w / 2, y: it.y + 12 });
+  // A pin sits at the top centre unless it was dragged; then it keeps its place as a fraction of the piece.
+  const pinOf = (it, f) => f ? { x: it.x + f[0] * it.w, y: it.y + f[1] * it.h } : { x: it.x + it.w / 2, y: it.y + 12 };
   // A string tied to a passage (l.anc) ends at those words, wherever they now are.
   function anchorPoint(l, toward) {
     const spans = world.querySelectorAll(`.anc[data-anc="${l.anc}"]`);
@@ -695,8 +696,8 @@ export function initDesk(ctx) {
   }
   function geom(l) {
     const a = byId(l.a), b = byId(l.b); if (!a || !b) return null;
-    let p = pinOf(a), q = (l.anc && anchorPoint(l, p)) || pinOf(b);
-    if (l.anc) p = { x: q.x < a.x + a.w / 2 ? a.x + 4 : a.x + a.w - 4, y: a.y + 28 }; // from the note's near side
+    let p = pinOf(a, l.pa), q = (l.anc && anchorPoint(l, p)) || pinOf(b, l.pb);
+    if (l.anc && !l.pa) p = { x: q.x < a.x + a.w / 2 ? a.x + 4 : a.x + a.w - 4, y: a.y + 28 }; // from the note's near side
     const d = Math.hypot(q.x - p.x, q.y - p.y);
     const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
     const apex = l.bend ? { x: m.x + l.bend.x, y: m.y + l.bend.y } : { x: m.x, y: m.y + Math.min(200, d * (l.anc ? 0.05 : 0.14)) };
@@ -712,6 +713,7 @@ export function initDesk(ctx) {
       r.str.style.stroke = STRING_COLORS[l.color || 'red'];
       [r.p1, r.p2].forEach((c) => c.setAttribute('r', 7));
       if (l.anc) r.p2.setAttribute('r', 4);
+      r.p1.dataset.end = 'a'; if (!l.anc) r.p2.dataset.end = 'b';
       g.append(r.shadow, r.hit, r.str, r.p1, r.p2);
       if (selLink === l.id) { r.knob = mk('circle', 'knob'); r.knob.setAttribute('r', 9); g.append(r.knob); }
       svg.append(g); linkEls.set(l.id, r);
@@ -723,6 +725,7 @@ export function initDesk(ctx) {
       if (only && !l.anc && !only.has(l.a) && !only.has(l.b) && !only.has(l.id)) continue;
       const r = linkEls.get(l.id), gm = geom(l); if (!r || !gm) continue;
       r.str.setAttribute('d', gm.d); r.hit.setAttribute('d', gm.d); r.shadow.setAttribute('d', gm.d);
+      const pr = Math.min(22, Math.max(7, 9 / view().z)); r.p1.setAttribute('r', pr); if (!l.anc) r.p2.setAttribute('r', pr);
       r.p1.setAttribute('cx', gm.p.x); r.p1.setAttribute('cy', gm.p.y); r.p2.setAttribute('cx', gm.q.x); r.p2.setAttribute('cy', gm.q.y);
       if (r.knob) { r.knob.setAttribute('cx', gm.apex.x); r.knob.setAttribute('cy', gm.apex.y); }
     }
@@ -932,6 +935,13 @@ export function initDesk(ctx) {
     eatMouse = false; $('deskAsk').hidden = true;
     if (e.button === 1) { e.preventDefault(); startPan(e); return; }
     if (e.button !== 0) return;
+    const pinEl = e.target.closest('.pin[data-end]');
+    if (pinEl) {
+      e.preventDefault(); eatMouse = true;
+      const l = board.links.find((x) => x.id === pinEl.closest('.lk').dataset.id);
+      if (selLink !== l.id) selectLink(l.id);
+      drag = { mode: 'pin', l, end: pinEl.dataset.end, moved: true }; vp.setPointerCapture(e.pointerId); return;
+    }
     const lk = e.target.closest('.lk');
     if (lk) {
       e.preventDefault(); eatMouse = true;
@@ -1121,6 +1131,13 @@ export function initDesk(ctx) {
       drag.path.setAttribute('d', ptsToD(drag.pts));
     } else if (drag.mode === 'erase') {
       eraseAt(drag.it, e.clientX, e.clientY);
+    } else if (drag.mode === 'pin') {
+      const it = byId(drag.end === 'a' ? drag.l.a : drag.l.b); if (!it) return;
+      const p = toWorld(e.clientX, e.clientY), pad = 6;
+      const fx = (Math.min(Math.max(p.x, it.x + pad), it.x + it.w - pad) - it.x) / it.w;
+      const fy = (Math.min(Math.max(p.y, it.y + pad), it.y + it.h - pad) - it.y) / it.h;
+      drag.l[drag.end === 'a' ? 'pa' : 'pb'] = [Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000];
+      dirty.items.add(drag.l.id); schedule();
     } else if (drag.mode === 'bend') {
       const gm = geom(drag.l); if (!gm) return;
       const p = toWorld(e.clientX, e.clientY);
@@ -1149,7 +1166,7 @@ export function initDesk(ctx) {
       if (d.pts.length > 1) { d.it.marks ||= {}; (d.it.marks[d.p] ||= []).push({ ...markStyle(ink), d: ptsToD(d.pts) }); }
       renderMarks(d.it, d.p); save(); return;
     }
-    if (d.mode === 'erase' || d.mode === 'lineEnd') { save(); return; }
+    if (d.mode === 'erase' || d.mode === 'lineEnd' || d.mode === 'pin') { save(); return; }
     if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
       const inGroup = d.it.group && selGroup() === d.it.group;
       if (!inGroup) {
@@ -1175,6 +1192,12 @@ export function initDesk(ctx) {
     const rz = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.classList?.contains('rz') && n.closest('.it.text'));
     if (rz) { const it = byId(rz.closest('.it').dataset.id); it.autoW = true; place(it); measureText(it); save(); return; }
     // (Double-clicking empty board does nothing; use the Text tool to add text.)
+  });
+  vp.addEventListener('dblclick', (e) => {
+    const pin = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.matches?.('.pin[data-end]'));
+    if (!pin) return;
+    const l = board.links.find((x) => x.id === pin.closest('.lk').dataset.id); if (!l) return;
+    delete l[pin.dataset.end === 'a' ? 'pa' : 'pb']; updateLinks(new Set([l.id])); save();
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
