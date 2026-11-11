@@ -145,7 +145,7 @@ sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 
 /* ---------- About ---------- */
 .about-hero{margin:0;position:relative}
-.about-hero img{display:block;width:100%;height:min(46vh,440px);object-fit:cover;object-position:center 62%}
+.about-hero img{display:block;width:100%;height:min(46vh,440px);object-fit:cover;object-position:center 50%}
 .about-hero figcaption{max-width:40rem;margin:10px auto 0;padding:0 24px;font-size:15px;font-style:italic;color:var(--ink-soft)}
 .about{max-width:40rem;margin:0 auto;padding:48px 24px 100px}
 .about h1{margin:0 0 10px}
@@ -153,6 +153,7 @@ sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .about h2{font-weight:400;font-variant:small-caps;letter-spacing:.09em;font-size:30px;margin:1.6em 0 .3em;line-height:1.1}
 .about p{margin:0}
 .about p + p{text-indent:2.1em}
+.about .dek + p, .about h2 + p{text-indent:0}
 .about .sig{margin-top:1.4em;text-align:right;font-style:italic;color:var(--ink-soft)}
 .about .card{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;margin:36px 0;padding:24px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .about .mono{width:76px;height:76px;display:grid;place-items:center;border:5px double var(--ink);font-size:40px;font-weight:500}
