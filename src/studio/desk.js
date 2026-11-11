@@ -235,7 +235,7 @@ export function initDesk(ctx) {
     };
     if (it.collapsed) el.classList.add('collapsed');
     if (it.type === 'link') { el.querySelector('[data-act=clip]').onclick = () => clipLink(it); const im = el.querySelector('.lk-img'); if (im) im.onerror = () => im.remove(); }
-    paint(it);
+    paint(it); if (BODY[it.type] && it.type !== 'text' && it.fs) applyFs(it);
     return el;
   }
   function place(it) {
@@ -260,7 +260,7 @@ export function initDesk(ctx) {
   function paint(it) {
     const el = els.get(it.id); if (!el) return;
     if (it.type === 'text') {
-      const b = el.querySelector('.tx-body'); b.style.fontSize = TEXT_SIZES[it.size || 'M'] + 'px'; b.style.color = INK[it.color || 'ivory'];
+      const b = el.querySelector('.tx-body'); b.style.fontSize = fsOf(it) + 'px'; b.style.color = INK[it.color || 'ivory'];
       requestAnimationFrame(() => measureText(it));
     }
     if (it.type === 'rect' || it.type === 'ellipse') {
@@ -270,6 +270,14 @@ export function initDesk(ctx) {
       svg.innerHTML = it.type === 'rect' ? `<rect x="${sw / 2}" y="${sw / 2}" width="${Math.max(0, w - sw)}" height="${Math.max(0, h - sw)}" ${attrs}/>` : `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${Math.max(0, w / 2 - sw / 2)}" ry="${Math.max(0, h / 2 - sw / 2)}" ${attrs}/>`;
     }
     if (it.type === 'line') paintLine(it);
+  }
+  const FS_DEFAULT = { text: 24, note: 16, quote: 16, sheet: 16 };
+  const BODY = { text: '.tx-body', note: '.nt-body', quote: '.q-body', sheet: '.sh-body' };
+  const fsOf = (it) => it.fs || (it.type === 'text' && it.size ? TEXT_SIZES[it.size] : FS_DEFAULT[it.type]);
+  function applyFs(it) {
+    const b = els.get(it.id)?.querySelector(BODY[it.type]); if (!b) return;
+    b.style.fontSize = fsOf(it) + 'px';
+    if (it.type === 'text') measureText(it);
   }
   function measureText(it) { const el = els.get(it.id); if (!el) return; it.h = el.offsetHeight || it.h; if (it.autoW !== false) it.w = el.offsetWidth || it.w; updateLinks(new Set([it.id])); }
   // A line stores its ends relative to its box (it.p = [x1, y1, x2, y2]) so it moves like any piece.
@@ -296,7 +304,7 @@ export function initDesk(ctx) {
   function styleControls(it) {
     const cur = (k, d) => (it[k] ?? d);
     let s = Object.entries(INK).map(([k, c]) => `<button class="sw${cur('color', 'ivory') === k ? ' on' : ''}" data-ink="${k}" style="background:${c}" title="${k}"></button>`).join('');
-    if (it.type === 'text') return s + '<i class="dv"></i>' + Object.keys(TEXT_SIZES).map((k) => `<button class="sb${cur('size', 'M') === k ? ' on' : ''}" data-size="${k}">${k}</button>`).join('');
+    if (it.type === 'text') return s;
     s += '<i class="dv"></i>' + WEIGHTS.map((w) => `<button class="sb${cur('weight', 2) === w ? ' on' : ''}" data-w="${w}" title="Line weight ${w}"><svg viewBox="0 0 26 12"><line x1="3" y1="6" x2="23" y2="6" stroke-width="${Math.min(w, 7)}"/></svg></button>`).join('');
     s += '<i class="dv"></i>' + [['solid', ''], ['dashed', '5 3'], ['dotted', '0.1 4']].map(([k, d]) => `<button class="sb${cur('dash', 'solid') === k ? ' on' : ''}" data-dash="${k}" title="${k}"><svg viewBox="0 0 26 12"><line x1="3" y1="6" x2="23" y2="6" stroke-width="2.2" stroke-dasharray="${d}" stroke-linecap="round"/></svg></button>`).join('');
     if (it.type === 'line') s += '<i class="dv"></i>' + [['none', '—'], ['end', '→'], ['both', '↔']].map(([k, l]) => `<button class="sb${cur('ends', 'none') === k ? ' on' : ''}" data-ends="${k}" title="Arrowheads">${l}</button>`).join('');
@@ -316,7 +324,7 @@ export function initDesk(ctx) {
     let w, h;
     if (type === 'sheet') { extra.paper ||= 'letter'; [w, h] = paperSize(extra.paper, extra.land); } else [w, h] = SIZES[type];
     if (extra.w) w = extra.w; if (extra.h) h = extra.h;
-    const looks = type === 'text' ? { color: style.color, size: style.size } : ['rect', 'ellipse', 'line'].includes(type) ? { color: style.color, weight: style.weight, dash: style.dash, fill: style.fill, ends: style.ends } : {};
+    const looks = type === 'text' ? { color: style.color, ...(style.fs ? { fs: style.fs } : {}) } : ['rect', 'ellipse', 'line'].includes(type) ? { color: style.color, weight: style.weight, dash: style.dash, fill: style.fill, ends: style.ends } : {};
     const at = type === 'text' ? { x: Math.round(cx), y: Math.round(cy - 20) } : { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2) };
     const it = { id: uid(), type, ...at, w, h, z: ++zTop, rot: 0, ...looks, ...extra };
     board.items.push(it); mount(it); select(it.id); save(); return it;
@@ -385,6 +393,13 @@ export function initDesk(ctx) {
           (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '') +
           (it.readonly ? '<button data-a="ro" title="Allow typing in this sheet">Make editable</button>' : '');
       }
+      if (BODY[it.type] && !it.readonly && !it.locked) {
+        extra = `<span class="lists"><button data-list="insertUnorderedList" title="Bulleted list (type - then a space)"><svg viewBox="0 0 24 24" class="ic"><circle cx="5" cy="7" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="5" cy="17" r="1.3"/><path d="M9 7h11M9 12h11M9 17h11"/></svg></button><button data-list="insertOrderedList" title="Numbered list (type 1. then a space)"><svg viewBox="0 0 24 24" class="ic"><path d="M4 5h1.5v4M4 9h3M4 14.5c0-1 2.8-1 2.8.3 0 1-2.8 1.7-2.8 3.2h3M10 7h10M10 12h10M10 17h10"/></svg></button><button data-list="indent" title="Indent (Tab)"><svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16M10 10h10M10 14h10M4 19h16M4 9.5l3 2.5-3 2.5"/></svg></button><button data-list="outdent" title="Outdent (Shift+Tab)"><svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16M10 10h10M10 14h10M4 19h16M7 9.5L4 12l3 2.5"/></svg></button></span><i class="dv"></i>` + extra;
+      }
+      if (BODY[it.type]) {
+        const pt = Math.round(fsOf(it) * 0.75 * 10) / 10;
+        extra = `<span class="fsz" title="Text size in points"><button data-fs="-1" title="Smaller">A−</button><input type="number" min="6" max="144" step="1" value="${pt}" aria-label="Text size in points"><em>pt</em><button data-fs="1" title="Larger">A+</button></span><i class="dv"></i>` + extra;
+      }
       bar.innerHTML = `<span>${LABEL[it.type] || 'Piece'}</span>${extra}` +
         `<button data-a="lock" title="Lock or unlock (Ctrl+Shift+L)">${it.locked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock'}</button>` +
         '<button data-a="tie">Tie string</button><button data-a="dup">Duplicate</button>' + (it.locked ? '' : '<button data-a="del">Delete</button>');
@@ -400,6 +415,21 @@ export function initDesk(ctx) {
       });
       bar.querySelector('[data-a=zoom]')?.addEventListener('click', () => zoomToItem(it));
       if (['text', 'rect', 'ellipse', 'line'].includes(it.type)) wireStyle(bar, it);
+      bar.querySelectorAll('[data-list]').forEach((b) => {
+        b.addEventListener('pointerdown', (e) => e.preventDefault()); b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.onclick = () => {
+          const ed = els.get(it.id)?.querySelector(BODY[it.type]); if (!ed) return;
+          if (!ed.contains(document.activeElement) && document.activeElement !== ed) { ed.focus({ preventScroll: true }); const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); const s2 = getSelection(); s2.removeAllRanges(); s2.addRange(r); }
+          listCmd(b.dataset.list); ed.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+      });
+      const fsIn = bar.querySelector('.fsz input');
+      if (fsIn) {
+        const setPt = (pt) => { pt = Math.min(144, Math.max(6, Math.round(pt * 2) / 2)); it.fs = Math.round(pt / 0.75 * 100) / 100; fsIn.value = pt; applyFs(it); if (it.type === 'text') remember({ fs: it.fs }); updateLinks(new Set([it.id])); save(); };
+        fsIn.addEventListener('change', () => setPt(+fsIn.value || 12));
+        fsIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { setPt(+fsIn.value || 12); fsIn.blur(); } });
+        bar.querySelectorAll('[data-fs]').forEach((b) => b.onclick = () => setPt(Math.round(fsOf(it) * 0.75) + +b.dataset.fs));
+      }
       if (it.type === 'pdf') {
         bar.querySelector('[data-a=pdflayout]').onclick = () => (it.mode === 'page' ? pdfJoin(it) : pdfToPages(it));
         bar.querySelectorAll('[data-ink-mode]').forEach((b) => b.onclick = () => {
@@ -614,6 +644,55 @@ export function initDesk(ctx) {
       if (r.knob) { r.knob.setAttribute('cx', gm.apex.x); r.knob.setAttribute('cy', gm.apex.y); }
     }
   }
+
+  /* ------------------------------------------------------------ lists and indents */
+  try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch {}
+  function listCmd(cmd) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand(cmd);
+    // Chrome indents plain paragraphs with a <blockquote>; mark it so it isn't styled as a quotation.
+    world.querySelectorAll('blockquote[style*="margin"]').forEach((q) => q.classList.add('ind'));
+  }
+  world.addEventListener('keydown', (e) => {
+    const ed = e.target.closest?.('[contenteditable="true"]'); if (!ed) return;
+    if (e.key === 'Tab') { e.preventDefault(); listCmd(e.shiftKey ? 'outdent' : 'indent'); ed.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (e.key === ' ') {
+      // "- " / "* " / "• " starts a bulleted list, "1. " a numbered one.
+      const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return;
+      const r = sel.getRangeAt(0), node = r.startContainer; if (node.nodeType !== 3) return;
+      const before = node.data.slice(0, r.startOffset);
+      const block = node.parentElement.closest('p, div, li, h3, blockquote') || ed;
+      const pre = document.createRange(); pre.selectNodeContents(block); pre.setEnd(r.startContainer, r.startOffset);
+      const prev = node.previousSibling;
+      const lead = block === ed ? ((!prev || prev.nodeType === 1) ? before : '') : pre.toString();
+      const kind = /^[-*•]$/.test(lead) ? 'insertUnorderedList' : /^1[.)]$/.test(lead) ? 'insertOrderedList' : null;
+      if (!kind || block.closest('li')) return;
+      e.preventDefault();
+      node.data = node.data.slice(before.length); // drop the marker
+      const r2 = document.createRange();
+      if (node.data) r2.setStart(node, 0); else { const p = node.parentNode; node.remove(); r2.selectNodeContents(block === ed ? ed : block); if (!block.textContent) block.innerHTML = '<br>'; r2.setStart(block, 0); }
+      r2.collapse(true); sel.removeAllRanges(); sel.addRange(r2);
+      listCmd(kind); ed.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter on an empty bullet steps out one level, or leaves the list.
+      const sel = getSelection(); if (!sel.rangeCount) return;
+      const n = sel.getRangeAt(0).startContainer, li = (n.nodeType === 1 ? n : n.parentElement).closest('li');
+      if (!li || !ed.contains(li) || li.textContent.replace(/\u200b/g, '').trim()) return;
+      e.preventDefault();
+      const nested = li.parentElement.parentElement.closest('ul, ol, li') && ed.contains(li.parentElement.parentElement);
+      if (nested) listCmd('outdent');
+      else { // leave the list: an empty paragraph takes the empty bullet's place
+        const list = li.parentElement, para = document.createElement('p'); para.innerHTML = '<br>';
+        const rest = []; for (let x = li.nextSibling; x; x = x.nextSibling) rest.push(x);
+        list.after(para);
+        if (rest.length) { const l2 = list.cloneNode(false); rest.forEach((x) => l2.appendChild(x)); para.after(l2); }
+        li.remove(); if (!list.children.length) list.remove();
+        const r3 = document.createRange(); r3.setStart(para, 0); r3.collapse(true); sel.removeAllRanges(); sel.addRange(r3);
+      }
+      ed.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
 
   /* ------------------------------------------------------------ formatting bar: highlight, underline, + note */
   const HL = { yellow: '#F6E27A', green: '#BFE3A8', pink: '#F4B6C8', blue: '#B8D6F2' };
