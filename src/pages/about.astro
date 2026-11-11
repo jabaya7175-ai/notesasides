@@ -1,0 +1,14 @@
+---
+import Site from '../layouts/Site.astro';
+import Subscribe from '../components/Subscribe.astro';
+import { AUTHOR, TAGLINE } from '../lib/config.js';
+---
+<Site title="About" current="about">
+  <div class="prose">
+    <p class="kicker caps">About</p>
+    <h1>Notes &amp; Asides.</h1>
+    <p><em>{TAGLINE}</em></p>
+    <p>{AUTHOR} — architect, Presbyterian, pursuing the good, the true, and the beautiful.</p>
+    <div style="margin-top:40px"><Subscribe /></div>
+  </div>
+</Site>

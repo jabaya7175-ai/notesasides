@@ -1,0 +1,17 @@
+---
+import Site from '../../layouts/Site.astro';
+import { listFullPosts } from '../../lib/data.js';
+import { renderArticle } from '../../lib/render.js';
+export async function getStaticPaths() {
+  const all = await listFullPosts();
+  return all.filter(({ post }) => post.slug).map(({ post, books }) => ({ params: { slug: post.slug }, props: { post, books } }));
+}
+const { post, books } = Astro.props;
+---
+<Site title={post.title} description={post.subtitle || undefined}>
+  <Fragment set:html={renderArticle(post, books)} />
+  <script>
+    import { initReader } from '../../scripts/reader.js';
+    initReader(document);
+  </script>
+</Site>

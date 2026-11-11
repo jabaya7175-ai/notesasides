@@ -1,0 +1,19 @@
+---
+import { esc, formatDate } from '../lib/render.js';
+const { posts = [] } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+{posts.length === 0
+  ? <p class="empty">The first essay is on its way.</p>
+  : <ul class="postlist">
+      {posts.map((p) => {
+        const books = (p.post_books || []).sort((a, b) => a.position - b.position).map((x) => x.books?.title).filter(Boolean);
+        return (
+          <li>
+            <div class="meta">{p.kind === 'review' ? 'Review' : 'Essay'}{books.length ? <span class="d"> · <i style="text-transform:none;letter-spacing:0;font-size:15px">{books.join(', ')}</i></span> : null} <span class="d">· {formatDate(p.published_at)}</span></div>
+            <h2><a href={`${base}p/${p.slug}/`}>{p.title}</a></h2>
+            {p.subtitle && <p>{p.subtitle}</p>}
+          </li>
+        );
+      })}
+    </ul>}

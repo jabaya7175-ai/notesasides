@@ -1,0 +1,21 @@
+---
+// Reads a post straight from the database: /read/?s=<slug>.
+// Used right after publishing, before the next site build creates /p/<slug>/.
+import Site from '../layouts/Site.astro';
+---
+<Site title="Reading">
+  <div id="post"><p class="empty" style="padding:80px 24px">Loading…</p></div>
+  <script>
+    import { getPost } from '../lib/data.js';
+    import { renderArticle } from '../lib/render.js';
+    import { initReader } from '../scripts/reader.js';
+    const slug = new URLSearchParams(location.search).get('s') || '';
+    const el = document.getElementById('post');
+    getPost(slug).then((r) => {
+      if (!r) { el.innerHTML = '<p class="empty" style="padding:80px 24px">This essay could not be found.</p>'; return; }
+      document.title = `${r.post.title} · Notes & Asides.`;
+      el.innerHTML = renderArticle(r.post, r.books);
+      initReader(el);
+    }).catch(() => { el.innerHTML = '<p class="empty" style="padding:80px 24px">This essay could not be loaded.</p>'; });
+  </script>
+</Site>

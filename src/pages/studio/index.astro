@@ -1,0 +1,194 @@
+---
+// The Studio: Joshua's private editor. Static page; everything happens in the
+// browser against Supabase, gated by sign-in and the `admins` table.
+import '../../styles/site.css';
+import '../../studio/studio.css';
+const base = import.meta.env.BASE_URL;
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Studio · Notes & Asides.</title>
+  <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
+</head>
+<body data-base={base}>
+
+<!-- ============ Sign in ============ -->
+<section class="view" id="v-signin">
+  <div class="center"><form class="card" id="signinForm">
+    <h1>Notes &amp; Asides.</h1>
+    <p>Studio sign-in</p>
+    <input type="email" id="signinEmail" placeholder="Your email address" autocomplete="email" required>
+    <button class="btn primary" type="submit">Email me a sign-in link</button>
+    <div class="small" id="signinMsg"></div>
+  </form></div>
+</section>
+
+<section class="view" id="v-denied">
+  <div class="center"><div class="card">
+    <h1>Not an editor yet</h1>
+    <p>You're signed in, but this account hasn't been made an editor.</p>
+    <div class="small">Account ID: <code id="deniedId"></code></div>
+    <p style="margin-top:18px"><button class="btn" id="signoutDenied">Sign out</button></p>
+  </div></div>
+</section>
+
+<!-- ============ Dashboard ============ -->
+<section class="view" id="v-dash">
+  <div class="topbar">
+    <div class="tb-left"><a class="pubname" href={base} style="text-decoration:none;color:inherit">Notes &amp; Asides.</a><span class="pill">Studio</span></div>
+    <div class="tb-right"><a class="btn" href={base} target="_blank" rel="noopener">View site</a><button class="btn" id="signout">Sign out</button><button class="btn primary" id="newPost">New post</button></div>
+  </div>
+  <div class="dash">
+    <div class="dash-head"><h1>Posts</h1></div>
+    <div class="tabs" id="tabs"><button data-t="draft" class="on">Drafts</button><button data-t="scheduled">Scheduled</button><button data-t="published">Published</button></div>
+    <ul class="rows" id="rows"></ul>
+  </div>
+</section>
+
+<!-- ============ Editor ============ -->
+<section class="view" id="v-editor">
+  <div class="topbar">
+    <div class="tb-left">
+      <button class="back" id="back" title="All posts" aria-label="All posts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span class="pubname">Notes &amp; Asides.</span>
+      <span class="pill" id="statusPill">Draft</span>
+      <span class="saved" id="saved">Saved</span>
+    </div>
+    <div class="tb-right">
+      <button class="btn" id="openInbox" title="Import a draft from your Freewrite">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M7 9h1M10 9h1M13 9h1M16 9h1M7 12h10M6 20h12"/></svg>
+        <span class="t-hide">Freewrite</span></button>
+      <button class="btn" id="previewBtn">Preview</button>
+      <button class="btn primary" id="continueBtn">Continue</button>
+    </div>
+  </div>
+
+  <div class="toolbar" id="toolbar">
+    <select class="styleSel" id="styleSel" title="Text style">
+      <option value="p">Normal text</option>
+      <option value="h2">Section heading</option>
+      <option value="h3">Subheading</option>
+    </select>
+    <span class="sep"></span>
+    <button class="tbtn" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
+    <button class="tbtn" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
+    <button class="tbtn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+    <button class="tbtn" id="linkBtn" title="Link (⌘K)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/></svg></button>
+    <span class="sep"></span>
+    <button class="tbtn" id="imgBtn" title="Image"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg></button>
+    <input type="file" id="imgInput" accept="image/*" hidden>
+    <button class="tbtn" id="quoteBtn" title="Quote"><svg viewBox="0 0 24 24"><path d="M7 7h4v4c0 3-1.5 5-4 6M15 7h4v4c0 3-1.5 5-4 6"/></svg><svg viewBox="0 0 24 24" style="width:10px;height:10px"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button class="tbtn" data-cmd="insertUnorderedList" title="Bulleted list"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".8"/><circle cx="4.5" cy="12" r=".8"/><circle cx="4.5" cy="18" r=".8"/></svg></button>
+    <button class="tbtn" data-cmd="insertOrderedList" title="Numbered list"><svg viewBox="0 0 24 24"><path d="M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.5 13.5c0-1 .8-1.5 1.5-1.5s1.5.5 1.5 1.3c0 1.2-3 2.2-3 3.7h3"/></svg></button>
+    <span class="sep"></span>
+    <button class="tbtn" id="fnBtn" title="Add a note in the margin"><svg viewBox="0 0 24 24"><path d="M4 18V8M4 13h7M11 18V8"/><path d="M16 5.5l2-1.5v7"/></svg><span class="lbl">Note</span></button>
+    <button class="tbtn" id="bookBtn" title="Add a book under review"><svg viewBox="0 0 24 24"><path d="M5 4h11a2 2 0 012 2v14H7a2 2 0 01-2-2z"/><path d="M5 18a2 2 0 012-2h11"/></svg><span class="lbl">Book</span></button>
+    <button class="tbtn" id="moreBtn" title="More"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+    <span class="sep"></span>
+    <button class="tbtn" data-cmd="undo" title="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+    <button class="tbtn" data-cmd="redo" title="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+  </div>
+
+  <main class="sheet" id="sheet">
+    <div class="edgrid">
+      <article class="edart" id="art">
+        <p class="kicker" id="kicker">Essay</p>
+        <div class="doc-title" id="title" contenteditable="true" data-ph="Title"></div>
+        <div class="doc-sub" id="subtitle" contenteditable="true" data-ph="Add a subtitle…"></div>
+        <div class="byline" id="byline"></div>
+        <aside class="edrail" id="rail" aria-label="Books reviewed"></aside>
+        <div class="doc-body" id="body" contenteditable="true" data-ph="Start writing…"></div>
+      </article>
+      <aside class="edmargin" id="margin" aria-label="Notes"><h4 class="mhead">Notes</h4><ol id="fnlist"></ol></aside>
+    </div>
+  </main>
+  <div id="preview"></div>
+</section>
+
+<div class="menu" id="quoteMenu">
+  <button data-q="block">Block quote <small>bar at left</small></button>
+  <button data-q="pull">Pull quote <small>centered</small></button>
+  <button data-q="none">Remove quote</button>
+</div>
+<div class="menu" id="moreMenu">
+  <button data-m="hr">Section break <small>⁂</small></button>
+  <button data-m="fw">Import from Freewrite…</button>
+  <button data-m="clear">Clear formatting</button>
+</div>
+<div class="linkpop" id="linkPop"><input id="linkInput" type="url" placeholder="Paste or type a link"><button class="btn primary" id="linkApply">Apply</button><button class="btn" id="linkRemove">Remove</button></div>
+
+<aside class="drawer left" id="inbox" aria-label="Import from Freewrite">
+  <header><h3>Import from Freewrite</h3><button class="btn" data-close="inbox">Close</button></header>
+  <div class="note">Choose a Markdown (.md) or text file from your Freewrite: from Google Drive › Postbox, or copied over USB. Importing replaces this draft's title, text and notes. Your Freewrite file isn't changed.</div>
+  <div class="fw-drop" id="fwDrop">Drop a .md file here, or <label for="fwFile">choose a file</label><input type="file" id="fwFile" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden></div>
+  <div class="note">Coming next: a list of your Drive drafts here, with no download step.</div>
+</aside>
+
+<aside class="drawer" id="settings" aria-label="Post settings">
+  <header><h3>Post settings</h3><button class="btn" data-close="settings">Close</button></header>
+  <section>
+    <h5>Article</h5>
+    <div class="field">Type<div class="seg" id="kindSeg"><button data-v="essay">Essay</button><button data-v="review">Book review</button></div></div>
+    <div id="booksBox"><div id="booksList"></div><button class="btn" id="addBook2">+ Add book</button></div>
+    <div class="field" style="margin-top:12px">URL<input type="text" id="slug" spellcheck="false"></div>
+  </section>
+  <section>
+    <h5>Typesetting</h5>
+    <div class="field">Paragraphs<div class="seg" id="paraSeg"><button data-v="book">Book</button><button data-v="web">Web</button></div></div>
+    <div class="field">Alignment<div class="seg" id="alignSeg"><button data-v="ragged">Ragged</button><button data-v="justify">Justified</button></div></div>
+    <div class="field">Drop cap<div class="seg" id="dcOnSeg"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="field">Drop cap lines<div class="seg" id="dcLinesSeg"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+    <div class="field">Drop cap frame<div class="seg" id="dcFrameSeg"><button data-v="">None</button><button data-v="orn-box">Single</button><button data-v="orn-double">Double</button><button data-v="orn-filled">Filled</button></div></div>
+    <div class="field">Drop cap weight<div class="seg" id="dcWeightSeg"><button data-v="400">Regular</button><button data-v="600">Semibold</button><button data-v="800">Bold</button></div></div>
+    <div class="field">Drop cap color<div class="swatches" id="dcColor">
+      <button data-v="var(--ink)" title="Text color" style="background:linear-gradient(135deg,#E9E2D2 50%,#1E2836 50%)"></button>
+      <button data-v="var(--red)" title="Red" style="background:#D9574B"></button>
+      <button data-v="#7A1A17" title="Oxblood" style="background:#7A1A17"></button>
+      <button data-v="var(--gold)" title="Gold" style="background:#C9A04A"></button></div></div>
+  </section>
+  <section>
+    <h5>Delivery</h5>
+    <label class="check"><input type="checkbox" id="sendEmail"> Send by email to subscribers</label>
+    <div class="note" style="padding:4px 0 10px">Email sending connects in a later step; this choice is saved with the post.</div>
+    <div class="field">Schedule (optional)<input type="datetime-local" id="schedule"></div>
+  </section>
+  <div class="publishbar"><button class="btn" id="unpublishBtn" style="margin-right:auto;display:none">Unpublish</button><button class="btn" id="settingsPreview">Preview</button><button class="btn primary" id="publishBtn">Publish now</button></div>
+</aside>
+
+<dialog id="bookdlg">
+  <form method="dialog" id="bookform">
+    <h3 id="dlgTitle">Add a book</h3>
+    <label>Title <input name="title" required></label>
+    <label>Author <input name="author"></label>
+    <div class="two"><label>Publisher <input name="publisher"></label><label>Year <input name="year"></label></div>
+    <div class="two"><label>Pages <input name="pages"></label><label>Price <input name="price" placeholder="$28.00"></label></div>
+    <label>Buy link <input name="buy_url" type="url" placeholder="https://bookshop.org/…"></label>
+    <label>Cover image <input name="cover" type="file" accept="image/*"></label>
+    <div class="actions"><button type="button" class="btn" id="delBook" style="color:var(--red)">Remove</button>
+      <span><button type="button" class="btn" id="cancelBook">Cancel</button> <button type="submit" class="btn primary">Save</button></span></div>
+  </form>
+</dialog>
+
+<dialog id="confirmdlg">
+  <form method="dialog">
+    <h3 id="cfTitle"></h3>
+    <div id="cfBody" style="font-size:16px;line-height:1.5;color:var(--ink-soft)"></div>
+    <div class="actions"><span></span><span><button class="btn" value="cancel">Cancel</button> <button class="btn primary" value="ok" id="cfOk">OK</button></span></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  import { start } from '../../studio/main.js';
+  start();
+</script>
+</body>
+</html>

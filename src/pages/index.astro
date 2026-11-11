@@ -1,0 +1,32 @@
+---
+import Site from '../layouts/Site.astro';
+import PostList from '../components/PostList.astro';
+import Subscribe from '../components/Subscribe.astro';
+import { listPosts } from '../lib/data.js';
+import { TAGLINE } from '../lib/config.js';
+const posts = await listPosts();
+---
+<Site>
+  <div class="home">
+    <section class="masthead" id="subscribe-section">
+      <h1>Notes &amp; Asides.</h1>
+      <p>{TAGLINE}</p>
+      <div id="subscribe"><Subscribe /></div>
+    </section>
+    <div id="posts"><PostList posts={posts.slice(0, 20)} /></div>
+  </div>
+  <script>
+    // New posts appear before the next site build: refresh the list from the database.
+    import { listPosts } from '../lib/data.js';
+    import { esc, formatDate } from '../lib/render.js';
+    const base = import.meta.env.BASE_URL;
+    listPosts().then((posts) => {
+      if (!posts.length) return;
+      const el = document.getElementById('posts');
+      el.innerHTML = '<ul class="postlist">' + posts.slice(0, 20).map((p) => {
+        const books = (p.post_books || []).sort((a, b) => a.position - b.position).map((x) => x.books?.title).filter(Boolean);
+        return `<li><div class="meta">${p.kind === 'review' ? 'Review' : 'Essay'}${books.length ? `<span class="d"> · <i style="text-transform:none;letter-spacing:0;font-size:15px">${books.map(esc).join(', ')}</i></span>` : ''} <span class="d">· ${esc(formatDate(p.published_at))}</span></div><h2><a href="${base}p/${encodeURIComponent(p.slug)}/">${esc(p.title)}</a></h2>${p.subtitle ? `<p>${esc(p.subtitle)}</p>` : ''}</li>`;
+      }).join('') + '</ul>';
+    }).catch(() => {});
+  </script>
+</Site>

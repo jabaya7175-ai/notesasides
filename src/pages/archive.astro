@@ -1,0 +1,12 @@
+---
+import Site from '../layouts/Site.astro';
+import PostList from '../components/PostList.astro';
+import { listPosts } from '../lib/data.js';
+const posts = await listPosts();
+---
+<Site title="Archive" current="archive">
+  <div class="home">
+    <h1 style="margin-bottom:36px">Archive</h1>
+    <PostList posts={posts} />
+  </div>
+</Site>

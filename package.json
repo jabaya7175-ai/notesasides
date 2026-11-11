@@ -1,0 +1,14 @@
+{
+  "name": "notes-and-asides",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "astro": "^7.4.10"
+  }
+}

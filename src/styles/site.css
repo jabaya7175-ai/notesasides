@@ -1,0 +1,146 @@
+/* Notes & Asides — site typesetting. EB Garamond throughout; dark navy by default. */
+:root{
+  color-scheme:dark;
+  --serif:'EB Garamond',Garamond,'Times New Roman',serif;
+  --paper:#1F2A37; --ink:#E9E2D2; --ink-soft:#AEB6C2; --red:#D9574B; --gold:#C9A04A; --rule:#3A4757; --quote-bar:#5A6779;
+  --fs:21px; --lh:1.6; --dc-color:var(--ink);
+}
+html.light{ color-scheme:light; --paper:#F3ECDD; --ink:#1E2836; --ink-soft:#4A5566; --rule:#CFC4AE; --red:#B3332B; --gold:#A8812F; --quote-bar:#B9AE97; }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font-family:var(--serif);font-size:var(--fs);line-height:var(--lh);-webkit-font-smoothing:antialiased;
+  font-variant-numeric:oldstyle-nums proportional-nums;font-kerning:normal}
+a{color:inherit}
+.caps{text-transform:uppercase;letter-spacing:.2em;font-weight:600;font-size:13px;font-variant-numeric:lining-nums;line-height:1.4}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Header / footer ---------- */
+header.site{display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:1px solid var(--rule)}
+.wordmark{font-weight:700;font-size:30px;color:var(--ink);text-decoration:none;white-space:nowrap}
+header.site nav a{font-variant:all-small-caps;letter-spacing:.16em;font-size:17px;color:var(--ink-soft);text-decoration:none;margin-left:26px}
+header.site nav a:hover,header.site nav a[aria-current="page"]{color:var(--red)}
+footer.site{border-top:1px solid var(--rule);padding:40px 32px 60px;text-align:center;color:var(--ink-soft);font-size:16px}
+footer.site .wordmark{font-size:24px;display:inline-block;margin-bottom:6px}
+footer.site p{margin:4px 0}
+footer.site .small{font-size:14px;opacity:.75}
+
+/* ---------- Article grid: [book rail] [text] [notes] ---------- */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,40rem) 15rem minmax(0,1fr);column-gap:3rem;padding:60px 24px 120px}
+.layout.review{grid-template-columns:minmax(0,1fr) 9.5rem minmax(0,40rem) 15rem minmax(0,1fr)}
+.layout article{grid-column:2;position:relative;min-width:0}
+.layout aside.margin{grid-column:3;position:relative}
+.layout.review article{grid-column:3} .layout.review aside.margin{grid-column:4}
+
+.kicker{color:var(--red);margin:0 0 16px}
+h1{font-weight:700;font-size:50px;line-height:1.04;margin:0 0 14px;letter-spacing:-.012em;font-variant-numeric:lining-nums}
+.dek{font-style:italic;font-size:24px;color:var(--ink-soft);margin:0 0 22px;line-height:1.35}
+.byline{font-size:17px;color:var(--ink-soft);padding-bottom:26px;margin-bottom:30px;border-bottom:1px solid var(--rule);line-height:1.4}
+.byline .by{color:var(--ink)}
+
+/* ---------- Body ---------- */
+.body p{margin:0;hyphens:auto;-webkit-hyphens:auto}
+.post.justify .body p{text-align:justify}
+.post.book .body > p + p{text-indent:2.1em}
+.post.book .body > :is(h2,h3,blockquote,figure,hr,ul,ol) + p{text-indent:0}
+.post:not(.book) .body > p{margin:0 0 1.05em}
+.body h2{font-weight:700;font-size:28px;margin:1.8em 0 .6em;line-height:1.15}
+.post.book .body h2{font-weight:400;font-variant:small-caps;letter-spacing:.09em;font-size:34px;margin:1.6em 0 .3em;line-height:1.1}
+.body > h2:first-child{margin-top:0}
+.body h3{font-weight:700;font-size:23px;margin:1.5em 0 .4em}
+.body blockquote{margin:1em 0;padding:.1em 0 .1em 1.1em;border-left:3px solid var(--quote-bar)}
+.body blockquote p{text-indent:0 !important;margin:0}
+.body blockquote.pull{border:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:.7em 0;margin:1.5em 0;text-align:center;font-size:1.35em;line-height:1.35}
+.body hr{border:0;margin:1.4em 0;text-align:center}
+.body hr::after{content:"\2042";color:var(--ink-soft)}
+.body a{color:var(--red)}
+.body figure{margin:1.4em 0}
+.body figure img{max-width:100%;display:block}
+.body figcaption{font-size:16px;font-style:italic;color:var(--ink-soft);margin-top:6px}
+.body ul,.body ol{padding-left:1.4em;margin:.6em 0}
+
+/* Opening line and drop cap (geometry from reader.js, measured from the font) */
+.post.book .body > p:first-of-type::first-line{font-variant:small-caps;letter-spacing:.12em}
+.post.dc.fitted .body > p:first-of-type::first-letter{float:left;font-family:var(--serif);font-style:normal;font-variant:normal;letter-spacing:0;
+  font-weight:var(--dc-weight,400);color:var(--dc-fg,var(--dc-color));background:var(--dc-bg,transparent);
+  font-size:var(--dc-size,3em);line-height:1;padding:var(--dc-pad,0);border:var(--dc-border,0 solid transparent);
+  margin:var(--dc-mt,0) var(--dc-mr,.2em) var(--dc-mb,0) 0}
+
+/* ---------- Notes ---------- */
+sup.ref{font-size:.62em;line-height:0;vertical-align:super;margin:0 .12em 0 .04em;font-variant-numeric:lining-nums}
+sup.ref button{all:unset;display:inline-block;text-indent:0;line-height:1.3;cursor:pointer;color:var(--red);font-weight:700;padding:0 2px;border-radius:2px;font-family:var(--serif)}
+sup.ref button:hover{text-decoration:underline}
+sup.ref button[aria-expanded="true"]{background:var(--red);color:var(--paper);text-decoration:none}
+sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.sidenote{position:absolute;left:0;width:100%;font-size:16.5px;line-height:1.45;color:var(--ink-soft);padding-left:14px;border-left:1.5px solid var(--red);
+  opacity:0;visibility:hidden;transform:translateX(-6px);transition:opacity .18s,transform .18s,top .18s}
+.sidenote.open{opacity:1;visibility:visible;transform:none}
+.sidenote .n{font-weight:700;color:var(--red);margin-right:6px;font-variant-numeric:lining-nums}
+.sidenote .x{all:unset;cursor:pointer;float:right;font-family:var(--serif);font-size:18px;line-height:1;color:var(--ink-soft);margin-left:8px}
+.inline-note{display:block;margin:.4em 0 1em;padding:10px 14px;border-left:1.5px solid var(--red);background:rgba(217,87,75,.08);font-size:17px;line-height:1.45;color:var(--ink-soft);text-indent:0;text-align:left}
+.inline-note b{color:var(--red);margin-right:6px}
+.endnotes{display:none;margin-top:3em;padding-top:1.2em;border-top:1px solid var(--rule);font-size:17px;line-height:1.5;color:var(--ink-soft)}
+.endnotes h3{font-weight:400;font-variant:small-caps;letter-spacing:.12em;font-size:22px;margin:0 0 .6em;color:var(--ink)}
+.endnotes ol{padding-left:1.3em;margin:0}
+.no-js .endnotes{display:block}
+
+/* ---------- Book rail ---------- */
+.rail{position:absolute;right:calc(100% + 3rem);width:9.5rem;top:var(--rail-top,0px);text-align:center;font-variant-numeric:lining-nums}
+.rail .caps{display:block;color:var(--red);margin:0 0 12px;font-size:11px;letter-spacing:.18em}
+.rail .bk{margin:0 0 28px}
+.rail p{margin:0;text-indent:0 !important;hyphens:none}
+.rail .cover,.rail .gencover{width:110px;margin:0 auto;display:block;aspect-ratio:2/3;object-fit:cover;box-shadow:0 6px 14px rgba(0,0,0,.3)}
+.rail .gencover{display:flex;flex-direction:column;justify-content:space-between;padding:12px 8px;background:#E7DFCC;color:#1E2836;text-align:center;line-height:1.1}
+.rail .gencover .t{font-weight:600;font-size:13px;font-variant:small-caps;margin-top:6px}
+.rail .gencover .a{font-variant:all-small-caps;letter-spacing:.14em;font-size:9px}
+.rail .gencover .orn{width:24px;height:1px;background:#7A1A17;margin:0 auto;box-shadow:0 4px 0 #7A1A17}
+.rail .title{font-style:italic;font-size:16px;line-height:1.2;margin:12px 0 2px}
+.rail .author{font-size:14px;color:var(--ink-soft);line-height:1.3}
+.rail .pub{font-size:13px;color:var(--ink-soft);opacity:.85;line-height:1.3;margin-bottom:12px}
+.buy{display:inline-block;padding:5px 16px;border:1px solid var(--rule);color:var(--ink-soft);text-decoration:none;font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:600;line-height:1.4}
+.buy:hover{border-color:var(--red);color:var(--red)}
+
+/* ---------- Home & archive ---------- */
+.home{max-width:40rem;margin:0 auto;padding:64px 24px 100px}
+.masthead{text-align:center;padding:10px 0 40px;margin-bottom:40px;border-bottom:1px solid var(--rule)}
+.masthead h1{font-size:54px;margin:0 0 8px}
+.masthead p{font-style:italic;color:var(--ink-soft);margin:0 0 22px;font-size:22px}
+.subscribe{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.subscribe input{font:inherit;font-size:17px;padding:8px 12px;min-width:260px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink)}
+.subscribe button{font:inherit;font-size:13px;letter-spacing:.2em;text-transform:uppercase;font-weight:600;padding:9px 20px;border:0;border-radius:4px;background:var(--red);color:#fff;cursor:pointer}
+.subscribe .msg{width:100%;text-align:center;font-size:16px;font-style:italic;color:var(--ink-soft);min-height:1.4em;margin-top:4px}
+.postlist{list-style:none;margin:0;padding:0}
+.postlist li{padding:0 0 30px;margin:0 0 30px;border-bottom:1px solid var(--rule)}
+.postlist li:last-child{border-bottom:0}
+.postlist .meta{font-size:12px;letter-spacing:.18em;text-transform:uppercase;font-weight:600;color:var(--red);font-variant-numeric:lining-nums;line-height:1.4}
+.postlist .meta .d{color:var(--ink-soft);font-weight:500}
+.postlist h2{font-size:34px;line-height:1.1;margin:8px 0 6px;font-weight:700}
+.postlist h2 a{text-decoration:none}
+.postlist h2 a:hover{color:var(--red)}
+.postlist p{margin:0;color:var(--ink-soft);font-style:italic;font-size:20px;line-height:1.4}
+.empty{text-align:center;color:var(--ink-soft);font-style:italic}
+.prose{max-width:40rem;margin:0 auto;padding:64px 24px 100px}
+.prose h1{margin-bottom:24px}
+.prose p{margin:0 0 1em}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1260px){
+  .layout.review{grid-template-columns:minmax(0,1fr) minmax(0,40rem) 15rem minmax(0,1fr)}
+  .layout.review article{grid-column:2} .layout.review aside.margin{grid-column:3}
+  .rail{position:static;width:auto;text-align:left;margin:0 0 30px;padding:0 0 24px;border-bottom:1px solid var(--rule)}
+  .rail .bk{display:grid;grid-template-columns:64px 1fr;column-gap:16px;align-items:center;margin:0 0 14px}
+  .rail .cover,.rail .gencover{width:64px;margin:0}
+  .rail .gencover{padding:6px 4px}.rail .gencover .t{font-size:8px}.rail .gencover .a{font-size:6px}.rail .gencover .orn{width:14px}
+  .rail .title{margin-top:0}
+}
+@media (max-width:1060px){
+  .layout,.layout.review{grid-template-columns:minmax(0,1fr) minmax(0,40rem) minmax(0,1fr);column-gap:0}
+  aside.margin{display:none}
+}
+@media (max-width:600px){
+  :root{--fs:19.5px}
+  header.site{padding:14px 18px;flex-wrap:wrap;row-gap:4px} header.site nav{width:100%} header.site nav a{margin:0 18px 0 0;font-size:15px}
+  .wordmark{font-size:24px}
+  h1{font-size:38px} .dek{font-size:21px} .post.book .body h2{font-size:28px}
+  .masthead h1{font-size:40px} .postlist h2{font-size:28px}
+  .layout{padding-top:40px}
+}

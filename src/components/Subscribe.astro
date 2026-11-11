@@ -1,0 +1,22 @@
+---
+---
+<form class="subscribe" id="subscribe" novalidate>
+  <label class="sr" for="sub-email">Email address</label>
+  <input id="sub-email" type="email" name="email" placeholder="Your email address" autocomplete="email" required>
+  <button type="submit">Subscribe</button>
+  <p class="msg" role="status" aria-live="polite"></p>
+</form>
+<script>
+  import { subscribe } from '../lib/data.js';
+  const f = document.getElementById('subscribe');
+  f?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = f.querySelector('.msg'), btn = f.querySelector('button');
+    const email = f.email.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = 'Please enter a valid email address.'; return; }
+    btn.disabled = true; msg.textContent = 'Subscribing…';
+    try { await subscribe(email); msg.textContent = 'Thank you. New essays will come to your inbox.'; f.reset(); }
+    catch { msg.textContent = 'Something went wrong. Please try again.'; }
+    finally { btn.disabled = false; }
+  });
+</script>
