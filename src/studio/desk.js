@@ -666,6 +666,9 @@ export function initDesk(ctx) {
   // A string is a quadratic curve between two pins. Its shape is set by the "apex"
   // (the curve's midpoint), stored as an offset from the straight-line midpoint so the
   // bend travels with the pieces. No offset = natural slack.
+  // String ends that sit on a piece (passage-tied ends excluded), and where they are as fractions.
+  const endsOn = (id) => board.links.flatMap((l) => [...(l.a === id ? [{ l, end: 'a' }] : []), ...(l.b === id && !l.anc ? [{ l, end: 'b' }] : [])]);
+  const fracOf = (o, it) => o.l[o.end === 'a' ? 'pa' : 'pb'] || [0.5, Math.min(1, 12 / it.h)];
   // A pin sits at the top centre unless it was dragged; then it keeps its place as a fraction of the piece.
   const pinOf = (it, f) => f ? { x: it.x + f[0] * it.w, y: it.y + f[1] * it.h } : { x: it.x + it.w / 2, y: it.y + 12 };
   // A string tied to a passage (l.anc) ends at those words, wherever they now are.
@@ -714,6 +717,7 @@ export function initDesk(ctx) {
       [r.p1, r.p2].forEach((c) => c.setAttribute('r', 7));
       if (l.anc) r.p2.setAttribute('r', 4);
       r.p1.dataset.end = 'a'; if (!l.anc) r.p2.dataset.end = 'b';
+      if (l.ja) r.p1.classList.add('joint'); if (l.jb) r.p2.classList.add('joint');
       g.append(r.shadow, r.hit, r.str, r.p1, r.p2);
       if (selLink === l.id) { r.knob = mk('circle', 'knob'); r.knob.setAttribute('r', 9); g.append(r.knob); }
       svg.append(g); linkEls.set(l.id, r);
@@ -940,7 +944,11 @@ export function initDesk(ctx) {
       e.preventDefault(); eatMouse = true;
       const l = board.links.find((x) => x.id === pinEl.closest('.lk').dataset.id);
       if (selLink !== l.id) selectLink(l.id);
-      drag = { mode: 'pin', l, end: pinEl.dataset.end, moved: true }; vp.setPointerCapture(e.pointerId); return;
+      const end = pinEl.dataset.end, jk = end === 'a' ? 'ja' : 'jb';
+      if (e.altKey) delete l[jk]; // Alt-drag pulls this end out of a joint
+      const joint = l[jk], itemId = end === 'a' ? l.a : l.b;
+      const mates = joint ? endsOn(itemId).filter((x) => x.l[x.end === 'a' ? 'ja' : 'jb'] === joint) : [{ l, end }];
+      drag = { mode: 'pin', l, end, itemId, mates, snap: null, moved: true }; vp.setPointerCapture(e.pointerId); return;
     }
     const lk = e.target.closest('.lk');
     if (lk) {
@@ -1132,12 +1140,19 @@ export function initDesk(ctx) {
     } else if (drag.mode === 'erase') {
       eraseAt(drag.it, e.clientX, e.clientY);
     } else if (drag.mode === 'pin') {
-      const it = byId(drag.end === 'a' ? drag.l.a : drag.l.b); if (!it) return;
+      const it = byId(drag.itemId); if (!it) return;
       const p = toWorld(e.clientX, e.clientY), pad = 6;
-      const fx = (Math.min(Math.max(p.x, it.x + pad), it.x + it.w - pad) - it.x) / it.w;
-      const fy = (Math.min(Math.max(p.y, it.y + pad), it.y + it.h - pad) - it.y) / it.h;
-      drag.l[drag.end === 'a' ? 'pa' : 'pb'] = [Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000];
-      dirty.items.add(drag.l.id); schedule();
+      let f = [(Math.min(Math.max(p.x, it.x + pad), it.x + it.w - pad) - it.x) / it.w, (Math.min(Math.max(p.y, it.y + pad), it.y + it.h - pad) - it.y) / it.h];
+      // Converging ends snap together (within about 14 pixels on screen).
+      drag.snap = null; const near = 14 / view().z;
+      for (const o of endsOn(it.id)) {
+        if (drag.mates.some((m) => m.l === o.l && m.end === o.end)) continue;
+        const of = fracOf(o, it), d = Math.hypot((of[0] - f[0]) * it.w, (of[1] - f[1]) * it.h);
+        if (d < near) { f = of; drag.snap = o; break; }
+      }
+      f = f.map((v) => Math.round(v * 1000) / 1000);
+      drag.mates.forEach((m) => { m.l[m.end === 'a' ? 'pa' : 'pb'] = f; dirty.items.add(m.l.id); });
+      schedule();
     } else if (drag.mode === 'bend') {
       const gm = geom(drag.l); if (!gm) return;
       const p = toWorld(e.clientX, e.clientY);
@@ -1165,6 +1180,13 @@ export function initDesk(ctx) {
     if (d.mode === 'ink') {
       if (d.pts.length > 1) { d.it.marks ||= {}; (d.it.marks[d.p] ||= []).push({ ...markStyle(ink), d: ptsToD(d.pts) }); }
       renderMarks(d.it, d.p); save(); return;
+    }
+    if (d.mode === 'pin' && d.snap) {
+      const ok = d.snap.end === 'a' ? 'ja' : 'jb';
+      const j = d.snap.l[ok] || d.l[d.end === 'a' ? 'ja' : 'jb'] || uid();
+      d.snap.l[ok] = j; d.snap.l[d.snap.end === 'a' ? 'pa' : 'pb'] = d.l[d.end === 'a' ? 'pa' : 'pb'];
+      d.mates.forEach((m) => { m.l[m.end === 'a' ? 'ja' : 'jb'] = j; });
+      drawLinks();
     }
     if (d.mode === 'erase' || d.mode === 'lineEnd' || d.mode === 'pin') { save(); return; }
     if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
@@ -1197,7 +1219,9 @@ export function initDesk(ctx) {
     const pin = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.matches?.('.pin[data-end]'));
     if (!pin) return;
     const l = board.links.find((x) => x.id === pin.closest('.lk').dataset.id); if (!l) return;
-    delete l[pin.dataset.end === 'a' ? 'pa' : 'pb']; updateLinks(new Set([l.id])); save();
+    const end = pin.dataset.end, joint = l[end === 'a' ? 'ja' : 'jb'], itemId = end === 'a' ? l.a : l.b;
+    const all = joint ? endsOn(itemId).filter((x) => x.l[x.end === 'a' ? 'ja' : 'jb'] === joint) : [{ l, end }];
+    all.forEach((x) => { delete x.l[x.end === 'a' ? 'pa' : 'pb']; }); updateLinks(); save();
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {

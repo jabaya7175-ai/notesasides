@@ -334,6 +334,7 @@ body.previewing #preview{display:block}
 .desk-links .lk.sel .str{stroke-width:3.6}
 .desk-links .pin{fill:#D9574B;stroke:#7A1A17;stroke-width:1.5}
 .desk-links .pin[data-end]{cursor:move}
+.desk-links .pin.joint{stroke:#E9C46A;stroke-width:2.5}
 .desk-links .pin[data-end]:hover{fill:#F0786C}
 .desk-links .knob{fill:#E9C46A;stroke:#1E2836;stroke-width:2;cursor:move}
 
