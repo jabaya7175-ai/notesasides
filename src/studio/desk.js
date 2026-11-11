@@ -17,14 +17,14 @@ export const PAPER = {
 };
 const PDF_BAR = 36;
 const SIZES = { note: [3 * IN, 3 * IN], quote: [5 * IN, 3 * IN], image: [4 * IN, 3 * IN], post: [4 * IN, 2 * IN], pdf: [6.5 * IN, Math.round(6.5 * IN * 1.294) + PDF_BAR],
-  link: [4 * IN, 176], text: [4 * IN, 40], rect: [3 * IN, 2 * IN], ellipse: [2.5 * IN, 2.5 * IN], line: [3 * IN, 1] };
+  link: [4 * IN, 176], video: [6 * IN, Math.round(6 * IN * 9 / 16) + 84], text: [4 * IN, 40], rect: [3 * IN, 2 * IN], ellipse: [2.5 * IN, 2.5 * IN], line: [3 * IN, 1] };
 // Drawing colours, weights (board units; 1 unit = 1/96 in) and line styles.
 const INK = { ivory: '#E9E2D2', ink: '#1E2836', red: '#C0392B', gold: '#E9C46A', blue: '#7FB2E5', green: '#8CC08A' };
 const WEIGHTS = [1, 2, 4, 8];
 const TEXT_SIZES = { S: 16, M: 24, L: 36, XL: 56 };
 const PEN = { red: '#C0392B', blue: '#2E6DB4', ink: '#1E2836', yellow: '#F2D33A', green: '#7BD389', pink: '#F29AC0' };
 const dashArray = (dash, w) => dash === 'dashed' ? `${3 * w + 5} ${2 * w + 5}` : dash === 'dotted' ? `0.1 ${2 * w + 4}` : '';
-const LABEL = { sheet: 'Sheet', note: 'Note', quote: 'Quote', image: 'Image', post: 'Post card', text: 'Text', rect: 'Box', ellipse: 'Circle', line: 'Line', pdf: 'PDF', link: 'Link' };
+const LABEL = { video: 'Video', sheet: 'Sheet', note: 'Note', quote: 'Quote', image: 'Image', post: 'Post card', text: 'Text', rect: 'Box', ellipse: 'Circle', line: 'Line', pdf: 'PDF', link: 'Link' };
 const MIN_Z = 0.1, MAX_Z = 3;
 
 const fmtIn = (u) => { const v = Math.round((u / IN) * 4) / 4; return String(v).replace(/\.0+$/, ''); };
@@ -158,7 +158,7 @@ export function initDesk(ctx) {
   /* ------------------------------------------------------------ items */
   function itemHTML(it) {
     switch (it.type) {
-      case 'sheet': return `<div class="grip"><span class="sz">${escH(sizeLabel(it))}</span><button class="mini" data-act="post" title="Turn this sheet into a post">→ Post</button></div><div class="page"><input class="sh-title" value="${escH(it.title || '')}" placeholder="Untitled sheet" spellcheck="false"><div class="sh-body" contenteditable="true" data-ph="Write…">${it.html || ''}</div></div><div class="rz"></div>`;
+      case 'sheet': return `<div class="grip"><span class="sz">${escH(sizeLabel(it))}</span><button class="mini" data-act="post" title="Turn this sheet into a post">→ Post</button></div><div class="page"><input class="sh-title" value="${escH(it.title || '')}" placeholder="Untitled sheet" spellcheck="false"><div class="sh-body" contenteditable="true" data-ph="Write…">${it.html || ''}</div></div>${it.collapsible ? `<button class="more" data-act="more">${it.collapsed ? 'Show full transcript ▾' : 'Show less ▴'}</button>` : ''}<div class="rz"></div>`;
       case 'note': return `<div class="nt-body" contenteditable="true" data-ph="Note…">${it.html || ''}</div><div class="rz"></div>`;
       case 'quote': return `<div class="q-mark">“</div><div class="q-body" contenteditable="true" data-ph="Quotation…">${it.html || ''}</div><div class="q-src" contenteditable="true" data-ph="— Source">${escH(it.source || '')}</div><div class="rz"></div>`;
       case 'image': return `<img src="${escH(it.url)}" alt="" draggable="false"><div class="im-cap" contenteditable="true" data-ph="Caption">${escH(it.caption || '')}</div><div class="rz"></div>`;
@@ -167,6 +167,7 @@ export function initDesk(ctx) {
       case 'line': return `<svg class="ln"></svg>`;
       case 'pdf': return `<div class="pdf-bar"><span class="pdf-t">${escH(it.title || 'PDF')}</span><button class="pg" data-pg="-1" title="Previous page">‹</button><span class="pdf-n">${it.page || 1} / ${it.pages || '…'}</span><button class="pg" data-pg="1" title="Next page">›</button><button class="mini" data-act="openpdf" title="Open the PDF in a new tab">Open</button></div><div class="pdf-page"><canvas></canvas><svg class="marks"></svg></div><div class="rz"></div>`;
       case 'link': return `${it.image ? `<img class="lk-img" src="${escH(it.image)}" alt="" draggable="false" referrerpolicy="no-referrer">` : ''}<div class="lk-b"><p class="lk-site">${escH(it.site || '')}</p><p class="lk-t">${escH(it.title || it.url)}</p>${it.description ? `<p class="lk-d">${escH(it.description)}</p>` : ''}<div class="lk-acts"><a class="mini" href="${escH(it.url)}" target="_blank" rel="noopener">Open ↗</a><button class="mini" data-act="clip" title="Bring the article's text onto the board as sheets">Clip text → sheets</button></div></div><div class="rz"></div>`;
+      case 'video': return `<div class="vd-bar"><span class="vd-t">${escH(it.title || 'YouTube video')}</span><span class="vd-c">${escH(it.channel || '')}</span></div><div class="vd-frame"><iframe src="https://www.youtube-nocookie.com/embed/${escH(it.vid)}?rel=0" title="${escH(it.title || 'YouTube video')}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><div class="vd-acts"><a class="mini" href="https://www.youtube.com/watch?v=${escH(it.vid)}" target="_blank" rel="noopener">Open on YouTube ↗</a><button class="mini" data-act="transcript">Transcript → sheet</button></div><div class="vd-paste" hidden><p>YouTube didn't let the board fetch this transcript. On YouTube, under the video open <b>…more → Show transcript</b>, select all of it, copy, and paste it here:</p><textarea placeholder="Paste the transcript"></textarea><div><button class="mini" data-act="tpaste">Make transcript sheet</button><button class="mini" data-act="tcancel">Cancel</button></div></div><div class="rz"></div>`;
       case 'post': return `<p class="pc-k">${escH(it.status || 'Post')}</p><p class="pc-t">${escH(it.title || 'Untitled')}</p>${it.subtitle ? `<p class="pc-s">${escH(it.subtitle)}</p>` : ''}<button class="mini" data-act="open">Open in editor</button>`;
     }
     return '';
@@ -214,6 +215,18 @@ export function initDesk(ctx) {
       const fit = () => { const ar = im.naturalHeight / im.naturalWidth; if (!ar || Math.abs((it.ar || 0) - ar) < 0.002) return; it.ar = ar; it.h = Math.round(it.w * ar); place(it); updateLinks(new Set([it.id])); save(); };
       if (im.complete) fit(); else im.onload = fit;
     }
+    if (it.type === 'video') {
+      el.querySelector('[data-act=transcript]').onclick = () => fetchTranscript(it);
+      const closePaste = () => { el.querySelector('.vd-paste').hidden = true; it.h = SIZES.video[1]; place(it); updateLinks(new Set([it.id])); save(); };
+      el.querySelector('[data-act=tcancel]').onclick = closePaste;
+      el.querySelector('[data-act=tpaste]').onclick = () => { const t = el.querySelector('.vd-paste textarea').value; const lines = parsePastedTranscript(t); if (!lines.length) { toast('Nothing to use there. Paste the transcript text.'); return; } closePaste(); makeTranscriptSheet(it, lines, it.title); };
+    }
+    if (it.collapsible) el.querySelector('[data-act=more]').onclick = () => {
+      it.collapsed = !it.collapsed; it.h = it.collapsed ? Math.round(3.25 * IN) : paperSize('letter')[1];
+      el.classList.toggle('collapsed', it.collapsed); el.querySelector('[data-act=more]').textContent = it.collapsed ? 'Show full transcript ▾' : 'Show less ▴';
+      el.querySelector('.page').scrollTop = 0; place(it); updateLinks(new Set([it.id])); save();
+    };
+    if (it.collapsed) el.classList.add('collapsed');
     if (it.type === 'link') { el.querySelector('[data-act=clip]').onclick = () => clipLink(it); const im = el.querySelector('.lk-img'); if (im) im.onerror = () => im.remove(); }
     paint(it);
     return el;
@@ -746,6 +759,7 @@ export function initDesk(ctx) {
       const it = byId(lend.closest('.it').dataset.id), [a, b] = lineEnds(it);
       drag = { mode: 'lineEnd', it, end: +lend.dataset.end, fixed: +lend.dataset.end ? a : b, moved: true }; vp.setPointerCapture(e.pointerId); return;
     }
+    if (spaceDown) { e.preventDefault(); startPan(e); return; }
     const itEl = e.target.closest('.it');
     if (itEl && ink && itEl.dataset.id === ink.id && e.target.closest('.pdf-page')) {
       e.preventDefault(); eatMouse = true;
@@ -762,7 +776,7 @@ export function initDesk(ctx) {
       }
       // Text stays selectable (to highlight or tie a note); anything else acts like the board.
       if (e.target.closest('[contenteditable], .textLayer span') && !e.shiftKey) { if (sel.size) setSel([]); return; }
-      document.activeElement?.blur?.(); select(null); startPan(e); return;
+      document.activeElement?.blur?.(); if (spaceDown) startPan(e); else startMarquee(e); return;
     }
     if (itEl) {
       const it = byId(itEl.dataset.id);
@@ -787,7 +801,7 @@ export function initDesk(ctx) {
         drag = { mode: 'resize', it, hd: e.target.dataset.h || 'se', sx: e.clientX, sy: e.clientY, x: it.x, y: it.y, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
-      if (!e.shiftKey && e.target.closest('input, button, select, a')) return;
+      if (!e.shiftKey && e.target.closest('input, button, select, a, textarea, iframe')) return;
       if (it.type === 'pdf' && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.textLayer')) return; // select the PDF's text
       const ed = !e.shiftKey && e.target.closest('[contenteditable]');
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
@@ -796,16 +810,23 @@ export function initDesk(ctx) {
       drag = { mode: 'move', it, el: itEl, ed, group, sx: e.clientX, sy: e.clientY, moved: false };
       vp.setPointerCapture(e.pointerId); return;
     }
-    // Background: Shift-drag draws a selection box; a plain drag pans.
+    // Background: drag a box to select everything it touches (Shift adds). Space-drag pans.
     document.activeElement?.blur?.();
-    if (e.shiftKey) {
-      e.preventDefault();
-      const box = document.createElement('div'); box.className = 'desk-marquee'; vp.appendChild(box);
-      drag = { mode: 'marquee', box, sx: e.clientX, sy: e.clientY, base: [...sel], moved: false }; vp.setPointerCapture(e.pointerId); return;
-    }
-    select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); }
-    startPan(e);
+    if (spaceDown) { startPan(e); return; }
+    startMarquee(e);
   });
+  function startMarquee(e) {
+    e.preventDefault();
+    if (!e.shiftKey) { select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); } }
+    const box = document.createElement('div'); box.className = 'desk-marquee'; vp.appendChild(box);
+    drag = { mode: 'marquee', box, sx: e.clientX, sy: e.clientY, base: e.shiftKey ? [...sel] : [], moved: false }; vp.setPointerCapture(e.pointerId);
+  }
+  let spaceDown = false;
+  addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || !board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea, select, button')) return;
+    e.preventDefault(); if (!spaceDown) { spaceDown = true; vp.classList.add('space'); }
+  });
+  addEventListener('keyup', (e) => { if (e.code === 'Space') { spaceDown = false; vp.classList.remove('space'); } });
   function startPan(e) { drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, x: view().x, y: view().y, moved: true }; vp.classList.add('panning'); vp.setPointerCapture(e.pointerId); }
   vp.addEventListener('pointermove', (e) => {
     if (!drag) return;
@@ -964,6 +985,7 @@ export function initDesk(ctx) {
     if (d.kind === 'freewrite') { const m = mdToHtml(d.body); addItem('sheet', x, y, { title: d.title || m.title, html: m.html }); }
     if (d.kind === 'image') addItem('image', x, y, { url: d.url, caption: d.title || '' });
     if (d.kind === 'pdf') addItem('pdf', x, y, { path: d.meta?.path, title: d.title, page: 1, marks: {} });
+    if (d.kind === 'link' && (d.meta?.video || ytId(d.url))) { addItem('video', x, y, { vid: d.meta?.video || ytId(d.url), url: d.url, title: d.title, channel: d.meta?.channel || '' }); return; }
     if (d.kind === 'link') addItem('link', x, y, { url: d.url, title: d.title, site: d.source || d.meta?.site, description: d.body || d.meta?.description, image: d.meta?.image, h: d.meta?.image ? 330 : 176 });
     if (d.kind === 'post') addItem('post', x, y, { postId: d.id, title: d.title, subtitle: d.subtitle, status: d.status === 'published' ? 'Published' : 'Draft' });
   }
@@ -1188,6 +1210,53 @@ export function initDesk(ctx) {
     renderSelBar();
   }
 
+  /* ------------------------------------------------------------ YouTube */
+  const ytId = (u) => { const m = String(u).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/i); return m ? m[1] : null; };
+  async function yt(body) { const { data, error } = await sb.functions.invoke('youtube', { body }); if (error) throw new Error(error.message); return data; }
+  async function addVideo(url, vid, x, y) {
+    toast('Adding the video…');
+    let d = { title: 'YouTube video', channel: '' }; try { d = await yt({ action: 'meta', id: vid }); } catch {}
+    addItem('video', x, y, { vid, url, title: d.title, channel: d.channel });
+    await sb.from('snippets').insert({ kind: 'link', title: d.title, url: `https://www.youtube.com/watch?v=${vid}`, body: '', source: d.channel ? `YouTube · ${d.channel}` : 'YouTube', meta: { video: vid, channel: d.channel } }); loadLib();
+  }
+  const fmtTs = (s) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+  async function fetchTranscript(it) {
+    toast('Fetching the transcript…');
+    try {
+      const d = await yt({ action: 'transcript', id: it.vid });
+      if (d?.lines?.length) { makeTranscriptSheet(it, d.lines, d.title || it.title, d.auto); return; }
+    } catch {}
+    const box = els.get(it.id)?.querySelector('.vd-paste'); if (box) { box.hidden = false; box.querySelector('textarea').focus(); }
+    if (it.h < SIZES.video[1] + 150) { it.h = SIZES.video[1] + 170; place(it); }
+  }
+  // Text copied from YouTube's "Show transcript" panel: timestamps on their own lines, text after each.
+  function parsePastedTranscript(text) {
+    const ts = /^(\d{1,2}:)?\d{1,2}:\d{2}$/, toSec = (t) => t.split(':').reduce((a, v) => a * 60 + +v, 0);
+    const out = []; let cur = null;
+    for (const raw of String(text).replace(/\r/g, '').split('\n')) {
+      const l = raw.trim(); if (!l) continue;
+      if (ts.test(l)) { cur = { s: toSec(l), t: '' }; out.push(cur); continue; }
+      if (/^\d+ (seconds?|minutes?|hours?)(, \d+ (seconds?|minutes?))*$/i.test(l)) continue; // screen-reader duplicates
+      if (!cur) { cur = { s: -1, t: '' }; out.push(cur); }
+      cur.t += (cur.t ? ' ' : '') + l;
+    }
+    return out.filter((x) => x.t);
+  }
+  function makeTranscriptSheet(v, lines, title, auto) {
+    // Paragraphs of about 30 seconds (or 450 characters), each opening with its timestamp.
+    const paras = []; let p = null;
+    for (const l of lines) {
+      if (!p || (l.s >= 0 && p.s >= 0 && (l.s - p.s > 30 || p.t.length > 450))) { p = { s: l.s, t: '' }; paras.push(p); }
+      p.t += (p.t ? ' ' : '') + l.t;
+    }
+    const html = `<p class="src"><i>${escH(v.channel || 'YouTube')}${auto ? ' · automatic captions' : ''}</i></p>` +
+      paras.map((q) => `<p>${q.s >= 0 ? `<a class="ts" href="https://www.youtube.com/watch?v=${escH(v.vid)}&t=${Math.floor(q.s)}s" target="_blank" rel="noopener">${fmtTs(q.s)}</a> ` : ''}${escH(q.t)}</p>`).join('');
+    const [w] = paperSize('letter');
+    const sh = { id: uid(), type: 'sheet', paper: 'custom', w, h: Math.round(3.25 * IN), x: v.x + v.w + 96, y: v.y, z: ++zTop, rot: 0, title: `Transcript: ${title || 'YouTube video'}`, html, collapsible: true, collapsed: true };
+    board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: v.id, b: sh.id });
+    drawLinks(); setSel([sh.id]); save(); toast('Transcript added. Use “Show full transcript” at the bottom to open it.');
+  }
+
   /* ------------------------------------------------------------ links to articles */
   async function fetchLink(url, clip = false) {
     const { data, error } = await sb.functions.invoke('link-preview', { body: { url, clip } });
@@ -1197,7 +1266,9 @@ export function initDesk(ctx) {
   }
   const normUrl = (u) => (/^https?:\/\//i.test(u) ? u : 'https://' + u).trim();
   async function addLink(url, x, y) {
-    url = normUrl(url); toast('Reading the link…');
+    url = normUrl(url);
+    const vid = ytId(url); if (vid) return addVideo(url, vid, x, y);
+    toast('Reading the link…');
     let d; try { d = await fetchLink(url); } catch (e) { toast('Could not read that page; added the link alone.'); let host = url; try { host = new URL(url).hostname; } catch {} d = { url, title: url, site: host }; }
     const meta = { site: d.site || '', description: d.description || '', image: d.image || '' };
     addItem('link', x, y, { url: d.url || url, title: d.title, site: meta.site, description: meta.description, image: meta.image, h: meta.image ? 330 : 176 });
@@ -1205,6 +1276,8 @@ export function initDesk(ctx) {
   }
   async function saveLinkToLib() {
     const u = $('linkCapInput').value.trim(); if (!u) return;
+    const vid = ytId(u);
+    if (vid) { $('linkCapInput').value = ''; let d = { title: 'YouTube video', channel: '' }; try { d = await yt({ action: 'meta', id: vid }); } catch {} await sb.from('snippets').insert({ kind: 'link', title: d.title, url: `https://www.youtube.com/watch?v=${vid}`, body: '', source: d.channel ? `YouTube · ${d.channel}` : 'YouTube', meta: { video: vid, channel: d.channel } }); loadLib(); toast('Video saved. Drag it onto the board.'); return; }
     $('linkCapInput').value = ''; toast('Reading the link…');
     let d; try { d = await fetchLink(normUrl(u)); } catch { d = { url: normUrl(u), title: normUrl(u) }; }
     const meta = { site: d.site || '', description: d.description || '', image: d.image || '' };
