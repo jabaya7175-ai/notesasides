@@ -450,6 +450,31 @@ body.previewing #preview{display:block}
 .it.text > .rz{width:calc(7px * var(--inv,1));height:calc(22px * var(--inv,1));border-radius:99px;background:#E9C46A;border:none}
 .it.text > .rz::after{display:none}
 .it.text:hover > .rz{opacity:1;pointer-events:auto}
+/* PDF text layer (selectable, invisible text) */
+.pdf-page .textLayer{position:absolute;inset:0;overflow:clip;line-height:1;text-align:initial;transform-origin:0 0;z-index:2;user-select:none;-webkit-user-select:none}
+.pdf-page .textLayer :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:inherit;transform-origin:0% 0%}
+.pdf-page .textLayer span.markedContent{top:0;height:0}
+.pdf-page .textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:-1;cursor:default;user-select:none}
+.it.pdf.sel .textLayer{user-select:text;-webkit-user-select:text}
+.it.pdf.sel .textLayer span{cursor:text}
+.pdf-page .textLayer ::selection{background:rgba(46,109,180,.3)}
+.it.inking .textLayer{pointer-events:none}
+.pdf-page .marks{z-index:1}
+.pdf-page .marks.erasing rect{pointer-events:all}
+.desk-fmt.pdfmode [data-cmd=bold],.desk-fmt.pdfmode [data-cmd=italic]{display:none}
+/* Back / Forward */
+.hist-row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px}
+.hist-row .tbtn{border:1px solid var(--line);border-radius:8px;height:32px;gap:6px}
+.hist-row .tbtn svg{width:16px;height:16px}
+.hist-row .tbtn .lbl{font-size:13.5px}
+.hist-row .tbtn:disabled{opacity:.35;cursor:default;background:none}
+/* Locked pieces: no dots, no moving; a small tag when selected */
+.it.locked > .rz{display:none!important}
+.it.locked,.it.locked *{cursor:default}
+.it.locked [contenteditable],.it.locked.editing [contenteditable]{cursor:text}
+.it.locked.sel{outline-style:dashed}
+.it.locked.sel::before{content:"Locked";position:absolute;right:0;bottom:100%;margin-bottom:calc(6px * var(--inv,1));font:600 calc(11px * var(--inv,1))/1.6 var(--serif);letter-spacing:.08em;text-transform:uppercase;color:#1E2836;background:#E9C46A;padding:0 calc(6px * var(--inv,1));border-radius:calc(4px * var(--inv,1));pointer-events:none;transform:rotate(calc(-1 * var(--rot,0deg)))}
+.desk-sel .ic{width:15px;height:15px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Formatting bar over selected text */
 .desk-fmt{position:absolute;z-index:8;display:flex;align-items:center;gap:3px;padding:5px 6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45)}
 .desk-fmt[hidden]{display:none}

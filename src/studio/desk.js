@@ -220,6 +220,8 @@ export function initDesk(ctx) {
   function place(it) {
     const el = els.get(it.id); if (!el) return;
     el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.zIndex = it.z || 1;
+    el.classList.toggle('locked', !!it.locked);
+    if (it.type === 'pdf' && it.pw) el.querySelector('.pdf-page')?.style.setProperty('--scale-factor', String(it.w / it.pw));
     const autoW = it.type === 'text' && it.autoW !== false;
     el.style.width = autoW ? 'max-content' : it.w + 'px';
     el.classList.toggle('autow', autoW);
@@ -258,7 +260,7 @@ export function initDesk(ctx) {
       const p = (r, t) => `${bx - r * Math.cos(a) + t * Math.sin(a)},${by - r * Math.sin(a) - t * Math.cos(a)}`;
       return `<polygon points="${bx},${by} ${p(L, W)} ${p(L, -W)}" fill="${c}"/>`;
     };
-    const ends = it.ends || 'none', sel = el.classList.contains('sel');
+    const ends = it.ends || 'none', sel = el.classList.contains('sel') && !it.locked;
     el.querySelector('.ln').innerHTML = `<line class="hitln" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>` +
       `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${sw}" stroke-dasharray="${dashArray(it.dash, sw)}" stroke-linecap="round"/>` +
       (ends === 'end' || ends === 'both' ? head(x1, y1, x2, y2) : '') + (ends === 'both' ? head(x2, y2, x1, y1) : '') +
@@ -327,7 +329,8 @@ export function initDesk(ctx) {
       bar.querySelector('[data-a=slack]').onclick = () => { delete l.bend; drawLinks(); save(); };
       bar.querySelector('[data-a=taut]').onclick = () => { l.bend = { x: 0, y: 0 }; drawLinks(); save(); };
     } else if (sel.size > 1) {
-      bar.innerHTML = `<span>${sel.size} pieces</span><button data-a="chain" title="Tie them together in the order you selected them">Tie together</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button><em>Shift-click to add or remove</em>`;
+      const anyUnlocked = [...sel].some((i) => !byId(i)?.locked);
+      bar.innerHTML = `<span>${sel.size} pieces</span><button data-a="lockall" title="Lock or unlock (Ctrl+Shift+L)">${anyUnlocked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock all' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock all'}</button><button data-a="chain" title="Tie them together in the order you selected them">Tie together</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button><em>Shift-click to add or remove</em>`;
       bar.hidden = false;
       bar.querySelector('[data-a=chain]').onclick = () => {
         const ids = [...sel]; let n = 0;
@@ -338,6 +341,7 @@ export function initDesk(ctx) {
         drawLinks(); save(); toast(n ? `Tied ${n} string${n > 1 ? 's' : ''}` : 'Already tied');
       };
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
+      bar.querySelector('[data-a=lockall]').onclick = () => toggleLock(anyUnlocked);
     } else if (selected) {
       const it = byId(selected);
       let extra = '';
@@ -354,7 +358,8 @@ export function initDesk(ctx) {
           (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '');
       }
       bar.innerHTML = `<span>${LABEL[it.type] || 'Piece'}</span>${extra}` +
-        '<button data-a="tie">Tie string</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button>';
+        `<button data-a="lock" title="Lock or unlock (Ctrl+Shift+L)">${it.locked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock'}</button>` +
+        '<button data-a="tie">Tie string</button><button data-a="dup">Duplicate</button>' + (it.locked ? '' : '<button data-a="del">Delete</button>');
       bar.hidden = false;
       bar.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { it.color = b.dataset.c; els.get(it.id).style.background = NOTE_COLORS[it.color]; save(); });
       bar.querySelector('[data-a=paper]')?.addEventListener('change', (e) => {
@@ -380,9 +385,10 @@ export function initDesk(ctx) {
       bar.querySelector('[data-a=split]')?.addEventListener('click', () => splitSheet(it));
       bar.querySelector('[data-a=join]')?.addEventListener('click', () => joinSheets(it));
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
+      bar.querySelector('[data-a=lock]').onclick = () => toggleLock(!it.locked);
       bar.querySelector('[data-a=tie]').onclick = () => { setTool('string'); tieFrom = selected; els.get(selected)?.classList.add('tie-from'); };
     } else { bar.hidden = true; return; }
-    bar.querySelector('[data-a=del]').onclick = removeSelected;
+    const del = bar.querySelector('[data-a=del]'); if (del) del.onclick = removeSelected;
   }
   function resized(it) {
     place(it); updateLinks(new Set([it.id]));
@@ -404,11 +410,22 @@ export function initDesk(ctx) {
       const ed = sp.closest('[contenteditable]'); sp.replaceWith(...sp.childNodes); if (ed) touched.add(ed);
     });
     touched.forEach((ed) => { ed.normalize(); ed.dispatchEvent(new Event('input', { bubbles: true })); });
+    board.items.forEach((it) => {
+      if (it.type !== 'pdf' || !it.marks) return; let changed = false;
+      for (const k of Object.keys(it.marks)) { const n = it.marks[k].filter((m) => m.t !== 'anc' || live.has(m.id)); if (n.length !== it.marks[k].length) { it.marks[k] = n; changed = true; } }
+      if (changed) renderMarks(it);
+    });
+  }
+  function toggleLock(on) {
+    sel.forEach((id) => { const it = byId(id); if (!it) return; if (on) it.locked = true; else delete it.locked; place(it); if (it.type === 'line') paintLine(it); });
+    renderSelBar(); save(); toast(on ? 'Locked: it stays put until you unlock it.' : 'Unlocked');
   }
   function removeSelected() {
     if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; cleanAnchors(); drawLinks(); renderSelBar(); save(); return; }
     if (!sel.size) return;
-    const gone = new Set(sel);
+    const gone = new Set([...sel].filter((id) => !byId(id)?.locked));
+    if (gone.size < sel.size) toast('Locked pieces were kept. Unlock them to delete.');
+    if (!gone.size) return;
     board.items = board.items.filter((i) => !gone.has(i.id));
     board.links = board.links.filter((l) => !gone.has(l.a) && !gone.has(l.b));
     gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
@@ -507,7 +524,14 @@ export function initDesk(ctx) {
   const pinOf = (it) => ({ x: it.x + it.w / 2, y: it.y + 12 });
   // A string tied to a passage (l.anc) ends at those words, wherever they now are.
   function anchorPoint(l, toward) {
-    const spans = world.querySelectorAll(`.anc[data-anc="${l.anc}"]`); if (!spans.length) return null;
+    const spans = world.querySelectorAll(`.anc[data-anc="${l.anc}"]`);
+    if (!spans.length) {
+      const host = byId(l.b); if (host?.type !== 'pdf') return null;
+      const m = (host.marks?.[host.page || 1] || []).find((x) => x.t === 'anc' && x.id === l.anc); if (!m) return null; // on another page: pin to the PDF
+      const r = m.r[0], sx = host.w / 1000, sy = (host.h - PDF_BAR) / markH(host);
+      const right = toward && host.x + (r[0] + r[2]) * sx < toward.x;
+      return { x: host.x + (right ? r[0] + r[2] + 2 : r[0] - 2) * sx, y: host.y + PDF_BAR + (r[1] + r[3] / 2) * sy };
+    }
     const first = spans[0].getClientRects()[0], last = [...spans[spans.length - 1].getClientRects()].pop();
     if (!first || !last) return null;
     const right = toward && toWorld(last.right, last.top).x < toward.x;
@@ -564,8 +588,9 @@ export function initDesk(ctx) {
     if (!board || !$('v-desk').classList.contains('on') || drag) return;
     const s = getSelection(); if (!s.rangeCount || s.isCollapsed) { hideFmt(); return; }
     const r = s.getRangeAt(0), host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
-    const ed = host?.closest('[contenteditable]'); if (!ed || !world.contains(ed)) { hideFmt(); return; }
+    const ed = host?.closest('[contenteditable], .textLayer'); if (!ed || !world.contains(ed)) { hideFmt(); return; }
     fmtRange = r.cloneRange(); fmtEd = ed;
+    fmt.classList.toggle('pdfmode', ed.classList.contains('textLayer'));
     const rr = r.getBoundingClientRect(), mr = $('deskVp').parentElement.getBoundingClientRect();
     fmt.hidden = false;
     const w = fmt.offsetWidth, top = rr.top - mr.top - fmt.offsetHeight - 10;
@@ -576,6 +601,7 @@ export function initDesk(ctx) {
   fmt.addEventListener('mousedown', (e) => e.preventDefault());
   fmt.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b || !fmtRange) return;
+    if (fmtEd?.classList.contains('textLayer')) { pdfFormat(b); return; }
     const s = getSelection(); s.removeAllRanges(); s.addRange(fmtRange);
     document.execCommand('styleWithCSS', false, true);
     if (b.dataset.hl) document.execCommand('hiliteColor', false, b.dataset.hl);
@@ -585,6 +611,33 @@ export function initDesk(ctx) {
     fmtEd?.dispatchEvent(new Event('input', { bubbles: true }));
     if (s.rangeCount) fmtRange = s.getRangeAt(0).cloneRange();
   });
+  // PDFs: highlights, underlines and passage anchors are stored as rectangles on the page.
+  function pdfSelRects(it, range) {
+    const svg = els.get(it.id).querySelector('.marks'), sr = svg.getBoundingClientRect(), H = markH(it), seen = new Set();
+    return [...range.getClientRects()].filter((r) => r.width > 1 && r.height > 1).map((r) =>
+      [(r.left - sr.left) / sr.width * 1000, (r.top - sr.top) / sr.height * H, r.width / sr.width * 1000, r.height / sr.height * H].map((v) => Math.round(v * 10) / 10))
+      .filter((r) => r[0] < 1000 && r[1] < H && r[0] + r[2] > 0 && r[1] + r[3] > 0)
+      .filter((r) => { const k = r.join(','); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  const overlaps = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+  function pdfFormat(b) {
+    const it = byId(fmtEd.closest('.it').dataset.id), rects = pdfSelRects(it, fmtRange); if (!rects.length) return;
+    const pg = it.page || 1; it.marks ||= {}; const list = (it.marks[pg] ||= []);
+    if (b.dataset.hl) list.push({ t: 'box', c: b.dataset.hl, r: rects });
+    else if (b.dataset.cmd === 'underline') list.push({ t: 'box', c: '#C0392B', u: 1, r: rects });
+    else if (b.dataset.cmd === 'clear') it.marks[pg] = list.filter((m) => m.t !== 'box' || !m.r.some((r) => rects.some((q) => overlaps(r, q))));
+    else if (b.dataset.cmd === 'note') {
+      const id = uid(); list.push({ t: 'anc', id, r: rects });
+      getSelection().removeAllRanges(); hideFmt(); renderMarks(it);
+      const sx = it.w / 1000, sy = (it.h - PDF_BAR) / markH(it), yTop = it.y + PDF_BAR + rects[0][1] * sy;
+      const [nw, nh] = SIZES.note;
+      const note = addItem('note', it.x + it.w + 72 + nw / 2, yTop - 24 + nh / 2, { color: 'yellow', rot: 0 });
+      board.links.push({ id: uid(), a: note.id, b: it.id, anc: id });
+      drawLinks(); save(); els.get(note.id).querySelector('.nt-body').focus({ preventScroll: true });
+      return;
+    } else return;
+    getSelection().removeAllRanges(); hideFmt(); renderMarks(it); save();
+  }
   // Wrap each piece of selected text in <span class="anc" data-anc="…"> (works across paragraphs).
   function wrapRange(range, id) {
     const root = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode;
@@ -678,7 +731,7 @@ export function initDesk(ctx) {
       drag = { mode: 'draw', type: tool, p0, it: null, sx: e.clientX, sy: e.clientY, moved: false }; vp.setPointerCapture(e.pointerId); return;
     }
     const lend = e.target.closest('.lend');
-    if (lend) {
+    if (lend && !byId(lend.closest('.it').dataset.id)?.locked) {
       e.preventDefault(); eatMouse = true;
       const it = byId(lend.closest('.it').dataset.id), [a, b] = lineEnds(it);
       drag = { mode: 'lineEnd', it, end: +lend.dataset.end, fixed: +lend.dataset.end ? a : b, moved: true }; vp.setPointerCapture(e.pointerId); return;
@@ -708,17 +761,18 @@ export function initDesk(ctx) {
         const had = sel.has(it.id); toggleSel(it.id);
         if (had) return; // removed from the selection: nothing to drag
       } else if (!sel.has(it.id) || e.target.classList.contains('rz')) select(it.id);
-      if (e.target.classList.contains('rz')) {
+      if (e.target.classList.contains('rz') && !it.locked) {
         e.preventDefault(); eatMouse = true;
         if (it.type === 'text') { it.w = itEl.offsetWidth; it.autoW = false; place(it); }
         drag = { mode: 'resize', it, hd: e.target.dataset.h || 'se', sx: e.clientX, sy: e.clientY, x: it.x, y: it.y, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
       if (!e.shiftKey && e.target.closest('input, button, select, a')) return;
+      if (it.type === 'pdf' && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.textLayer')) return; // select the PDF's text
       const ed = !e.shiftKey && e.target.closest('[contenteditable]');
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
       e.preventDefault(); eatMouse = true;
-      const group = [...sel].map(byId).filter(Boolean).map((g) => ({ it: g, x: g.x, y: g.y, el: els.get(g.id) }));
+      const group = [...sel].map(byId).filter((g) => g && !g.locked).map((g) => ({ it: g, x: g.x, y: g.y, el: els.get(g.id) }));
       drag = { mode: 'move', it, el: itEl, ed, group, sx: e.clientX, sy: e.clientY, moved: false };
       vp.setPointerCapture(e.pointerId); return;
     }
@@ -870,6 +924,9 @@ export function initDesk(ctx) {
     if (e.key === 'Escape' && ink) { setInk(null); return; }
     if (e.key === 'Escape') { const was = world.contains(document.activeElement); setTool('select'); document.activeElement?.blur?.(); if (!was && !typing) select(null); }
     if (typing) return;
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L') && sel.size) { e.preventDefault(); toggleLock([...sel].some((i) => !byId(i)?.locked)); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && (sel.size || selLink)) { e.preventDefault(); removeSelected(); }
     if (e.key === 'v') setTool('select');
     if (e.key === 't') setTool('string');
@@ -877,7 +934,7 @@ export function initDesk(ctx) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'd' && sel.size) { e.preventDefault(); duplicateSel(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); setSel(board.items.map((i) => i.id)); }
     const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-    if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
+    if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it && !it.locked) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
   });
 
   /* ------------------------------------------------------------ drop: from sidebar (pointer drag), files */
@@ -1065,6 +1122,13 @@ export function initDesk(ctx) {
       await pg.render({ canvasContext: cv.getContext('2d'), viewport: vpPdf }).promise;
       if (renderTok.get(it.id) !== tok) return;
       el.querySelector('.pdf-page canvas').replaceWith(cv);
+      // Selectable text over the page (transparent; sized by --scale-factor).
+      it.pw = v1.width;
+      const pgEl = el.querySelector('.pdf-page'); pgEl.style.setProperty('--scale-factor', String(it.w / v1.width));
+      pgEl.querySelector('.textLayer')?.remove();
+      const tl = document.createElement('div'); tl.className = 'textLayer'; pgEl.appendChild(tl);
+      const lib = await loadPdfjs();
+      await new lib.TextLayer({ textContentSource: pg.streamTextContent(), container: tl, viewport: pg.getViewport({ scale: 1 }) }).render().catch(() => {});
       el.querySelector('.pdf-n').textContent = `${it.page} / ${it.pages}`;
       const pn = $('deskSel').querySelector('.pgn'); if (pn && selected === it.id) pn.textContent = `${it.page} / ${it.pages}`;
       renderMarks(it);
@@ -1072,7 +1136,7 @@ export function initDesk(ctx) {
   }
   function pdfGo(it, d) {
     const n = Math.min(Math.max(1, (it.page || 1) + d), it.pages || 1); if (n === it.page) return;
-    it.page = n; renderPdf(it); save();
+    it.page = n; renderPdf(it).then(() => updateLinks()); save();
   }
   const markH = (it) => Math.round(1000 * (it.ar || 1.294));
   function markPoint(it, cx, cy) {
@@ -1085,11 +1149,15 @@ export function initDesk(ctx) {
   function renderMarks(it) {
     const svg = els.get(it.id)?.querySelector('.marks'); if (!svg) return;
     svg.setAttribute('viewBox', `0 0 1000 ${markH(it)}`); svg.setAttribute('preserveAspectRatio', 'none');
-    svg.innerHTML = (it.marks?.[it.page || 1] || []).map((m, i) => `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round" stroke-opacity="${m.hl ? 0.38 : 1}"/>`).join('');
+    svg.innerHTML = (it.marks?.[it.page || 1] || []).map((m, i) => {
+      if (m.t === 'box') return m.r.map((r) => m.u ? `<rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 2.4}" width="${r[2]}" height="2.4" fill="${m.c}"/>` : `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="${m.c}" fill-opacity="0.4"/>`).join('');
+      if (m.t === 'anc') return m.r.map((r) => `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="#C0392B" fill-opacity="0.08"/><rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 1.6}" width="${r[2]}" height="1.6" fill="#C0392B" fill-opacity="0.75"/>`).join('');
+      return `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round" stroke-opacity="${m.hl ? 0.38 : 1}"/>`;
+    }).join('');
   }
   function eraseAt(it, cx, cy) {
     const svg = els.get(it.id).querySelector('.marks');
-    const hit = document.elementsFromPoint(cx, cy).find((n) => n.tagName === 'path' && svg.contains(n));
+    const hit = document.elementsFromPoint(cx, cy).find((n) => (n.tagName === 'path' || n.tagName === 'rect') && svg.contains(n));
     if (!hit) return;
     it.marks[it.page || 1].splice(+hit.dataset.i, 1); renderMarks(it);
   }
@@ -1214,7 +1282,25 @@ export function initDesk(ctx) {
   // Content changes save after a short pause; view changes (pan/zoom) save quietly.
   let savedText = '';
   const setSaved = (t) => { if (savedText !== t) { savedText = t; $('deskSaved').textContent = t; } };
-  function save() { if (!board) return; setSaved('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 800); }
+  // Back/Forward: snapshots of the pieces and strings, taken as changes settle.
+  let hist = [], fut = [], histT = 0, restoring = false;
+  const snapshot = () => JSON.stringify({ items: board.items, links: board.links });
+  function updHist() { $('undoBtn').disabled = hist.length < 2; $('redoBtn').disabled = !fut.length; }
+  function commitHist() { clearTimeout(histT); histT = 0; if (!board || restoring) return; const s = snapshot(); if (hist[hist.length - 1] !== s) { hist.push(s); if (hist.length > 150) hist.shift(); fut = []; } updHist(); }
+  function recordSoon() { if (restoring) return; clearTimeout(histT); histT = setTimeout(commitHist, 400); }
+  function restoreSnap(snap) {
+    restoring = true;
+    const d = JSON.parse(snap); board.items = d.items; board.links = d.links;
+    els.forEach((el) => el.remove()); els.clear(); hideFmt();
+    board.items.forEach(mount); sel = new Set(); selected = null; selLink = null; ink = null;
+    drawLinks(); renderSelBar(); zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
+    save(); restoring = false; updHist();
+  }
+  function undo() { if (histT) commitHist(); if (hist.length < 2) return; fut.push(hist.pop()); restoreSnap(hist[hist.length - 1]); }
+  function redo() { if (!fut.length) return; const s = fut.pop(); hist.push(s); restoreSnap(s); }
+  $('undoBtn').onclick = () => { document.activeElement?.blur?.(); undo(); };
+  $('redoBtn').onclick = () => { document.activeElement?.blur?.(); redo(); };
+  function save() { if (!board) return; recordSoon(); setSaved('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 800); }
   function saveView() { if (!board) return; if (saveTimer && savedText === 'Saving…') return; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1500); }
   async function flush() {
     if (!board || !saveTimer) return; saveTimer = null;
@@ -1241,6 +1327,7 @@ export function initDesk(ctx) {
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
+    hist = [snapshot()]; fut = []; clearTimeout(histT); histT = 0; updHist();
     applyView(); loadLib(); renderTabs(true);
     setSaved('Saved');
   }

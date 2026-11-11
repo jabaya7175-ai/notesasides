@@ -87,6 +87,7 @@ const base = import.meta.env.BASE_URL;
         <div class="link-row" id="linkRow" hidden><input id="linkInput" placeholder="Paste a link to an article" spellcheck="false"><button class="btn primary" id="linkAdd">Add</button></div>
         <input type="file" id="deskImgInput" accept="image/*" multiple hidden>
         <input type="file" id="deskPdfInput" accept="application/pdf,.pdf" multiple hidden>
+        <div class="hist-row"><button class="tbtn" id="undoBtn" title="Back (Ctrl+Z)" disabled><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg><span class="lbl">Back</span></button><button class="tbtn" id="redoBtn" title="Forward (Ctrl+Shift+Z)" disabled><span class="lbl">Forward</span><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button></div>
         <div class="zoom-row"><button class="tbtn" id="zoomOut" title="Zoom out">−</button><span class="zoom" id="zoomPct">100%</span><button class="tbtn" id="zoomIn" title="Zoom in">+</button><button class="tbtn" id="zoomFit" title="Fit everything"><span class="lbl">Fit all</span></button></div>
       </div>
       <p class="desk-h lib-h">Library</p>
