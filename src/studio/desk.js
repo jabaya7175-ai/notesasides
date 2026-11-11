@@ -318,7 +318,7 @@ export function initDesk(ctx) {
     if (extra.w) w = extra.w; if (extra.h) h = extra.h;
     const looks = type === 'text' ? { color: style.color, size: style.size } : ['rect', 'ellipse', 'line'].includes(type) ? { color: style.color, weight: style.weight, dash: style.dash, fill: style.fill, ends: style.ends } : {};
     const at = type === 'text' ? { x: Math.round(cx), y: Math.round(cy - 20) } : { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2) };
-    const it = { id: uid(), type, ...at, w, h, z: ++zTop, rot: type === 'note' ? +(Math.random() * 4 - 2).toFixed(1) : 0, ...looks, ...extra };
+    const it = { id: uid(), type, ...at, w, h, z: ++zTop, rot: 0, ...looks, ...extra };
     board.items.push(it); mount(it); select(it.id); save(); return it;
   }
   const viewCenter = () => toWorld(...vpCenter());
@@ -1609,7 +1609,7 @@ export function initDesk(ctx) {
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
     board.items.forEach((i) => { if (i.type === 'sheet' && i.collapsible && /class="ts"/.test(i.html || '')) upgradeTranscript(i); });
     board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
-    board.links.forEach((l) => { if (l.anc) { const n = board.items.find((i) => i.id === l.a); if (n) n.rot = 0; } }); // tied notes sit square
+    board.items.forEach((i) => { if (i.rot) i.rot = 0; }); // every piece sits square
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
