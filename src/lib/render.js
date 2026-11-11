@@ -14,7 +14,9 @@ export const readingMinutes = (html) => {
   return Math.max(1, Math.round(words / 230));
 };
 
-export const DEFAULT_DROP_CAP = { on: true, lines: 3, weight: 400, color: 'var(--ink)', frame: 'orn-double' };
+export const DEFAULT_DROP_CAP = { on: false, opening: 'boldline', lines: 3, weight: 400, color: 'var(--ink)', frame: 'orn-double' };
+/** Opening of the first paragraph: 'boldline' | 'dropcap' | 'smallcaps' | 'plain'. */
+export const openingOf = (dc = {}) => dc.opening || (dc.on ? 'dropcap' : 'boldline');
 
 /** Turn the editor's <sup class="fn" data-id> markers into numbered, clickable references. */
 export function processBody(bodyHtml, notes) {
@@ -51,7 +53,9 @@ export function renderArticle(post, books = []) {
   const dc = { ...DEFAULT_DROP_CAP, ...(post.drop_cap || {}) };
   const { html, notes } = processBody(post.body_html, post.notes);
   const review = post.kind === 'review' && books.length > 0;
-  const cls = ['post', post.paragraph_style === 'web' ? '' : 'book', post.align === 'justify' ? 'justify' : '', dc.on ? 'dc' : '']
+  const opening = openingOf(post.drop_cap || {});
+  const cls = ['post', post.paragraph_style === 'web' ? '' : 'book', post.align === 'justify' ? 'justify' : '',
+    opening === 'dropcap' ? 'dc' : opening === 'boldline' ? 'open-bold' : opening === 'smallcaps' ? 'open-sc' : '']
     .filter(Boolean).join(' ');
   const date = formatDate(post.published_at || post.updated_at || new Date());
   const side = notes.map((n, i) => `<div class="sidenote" id="sn-${i + 1}" role="note"><button type="button" class="x" aria-label="Close note">×</button><span class="n">${i + 1}</span>${n.body}</div>`).join('');

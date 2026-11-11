@@ -65,7 +65,8 @@ h1{font-weight:700;font-size:50px;line-height:1.04;margin:0 0 14px;letter-spacin
 .body ul,.body ol{padding-left:1.4em;margin:.6em 0}
 
 /* Opening line and drop cap (geometry from reader.js, measured from the font) */
-.post.book .body > p:first-of-type::first-line{font-variant:small-caps;letter-spacing:.12em}
+.post.open-sc .body > p:first-of-type::first-line{font-variant:small-caps;letter-spacing:.12em}
+.post.open-bold .body > p:first-of-type::first-line{font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .post.dc.fitted .body > p:first-of-type::first-letter{float:left;font-family:var(--serif);font-style:normal;font-variant:normal;letter-spacing:0;
   font-weight:var(--dc-weight,400);color:var(--dc-fg,var(--dc-color));background:var(--dc-bg,transparent);
   font-size:var(--dc-size,3em);line-height:1;padding:var(--dc-pad,0);border:var(--dc-border,0 solid transparent);

@@ -197,6 +197,8 @@ export const DEMO_POSTS = [ARCH, ...EXTRA.slice(0,1),
 
 DEMO_POSTS.splice(3, 0, EXTRA[1]);
 DEMO_POSTS.sort((a, b) => b.published_at.localeCompare(a.published_at));
+// For now the demo opens every essay with a bold capitalized first line.
+DEMO_POSTS.forEach((p) => { p.drop_cap = { ...(p.drop_cap || {}), on: false, opening: 'boldline' }; });
 
 export const demoBySlug = (slug) => DEMO_POSTS.find((p) => p.slug === slug);
 export const demoListRows = () => DEMO_POSTS.map((p) => ({ ...p, post_books: (p.books || []).map((b, i) => ({ position: i, books: b })) }));

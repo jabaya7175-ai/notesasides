@@ -1,8 +1,9 @@
 // Notes & Asides — Studio. Substack-style editor, typeset like the site, backed by Supabase.
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY, AUTHOR } from '../lib/config.js';
-import { esc, slugify, formatDate, readingMinutes, renderArticle, DEFAULT_DROP_CAP } from '../lib/render.js';
+import { esc, slugify, formatDate, readingMinutes, renderArticle, DEFAULT_DROP_CAP, openingOf } from '../lib/render.js';
 import { fitDropcap, initReader } from '../scripts/reader.js';
+import { initDesk } from './desk.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: 'pkce' } });
 const $ = (id) => document.getElementById(id);
@@ -36,17 +37,20 @@ export async function start() {
   const { data } = await sb.auth.getSession(); user = data.session?.user || null;
   addEventListener('hashchange', route);
   wireEditor(); wireDash();
+  desk = initDesk({ sb, toast, confirmBox, upload, openPost: (id) => { location.hash = `#/post/${id}`; } });
   route();
 }
 
-let admin = null;
+let admin = null, desk = null;
 async function route() {
   if (!user) { admin = null; show('v-signin'); return; }
   if (admin === null) { const { data } = await sb.rpc('is_admin'); admin = !!data; }
   if (!admin) { $('deniedId').textContent = user.id; show('v-denied'); return; }
   const m = location.hash.match(/^#\/post\/([0-9a-f-]{36})$/);
-  if (m) { await openPost(m[1]); show('v-editor'); }
-  else { await flushSave(); setPreview(false); show('v-dash'); loadDash(); }
+  const d = location.hash.match(/^#\/desk(?:\/([0-9a-f-]{36}))?$/);
+  if (m) { await desk?.flush(); await openPost(m[1]); show('v-editor'); }
+  else if (d) { await flushSave(); setPreview(false); show('v-desk'); await desk.open(d[1]); }
+  else { await flushSave(); await desk?.flush(); setPreview(false); show('v-dash'); loadDash(); }
 }
 
 /* =================================================================== dashboard */
@@ -90,7 +94,7 @@ let lastVersionAt = 0;
 
 function settingsFrom(p) {
   const dc = { ...DEFAULT_DROP_CAP, ...(p.drop_cap || {}) };
-  return { section: p.section || '', coverUrl: p.cover_url || '', coverCaption: p.cover_caption || '', kind: p.kind, para: p.paragraph_style, align: p.align, dcOn: !!dc.on, dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
+  return { section: p.section || '', coverUrl: p.cover_url || '', coverCaption: p.cover_caption || '', kind: p.kind, para: p.paragraph_style, align: p.align, opening: openingOf(dc), dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
 }
 function makeNote(id, html) { const li = document.createElement('li'); li.dataset.id = id; li.contentEditable = 'true'; li.innerHTML = html || ''; return li; }
 
@@ -118,7 +122,7 @@ function collect() {
   return {
     title: titleEl().textContent.trim(), subtitle: subEl().textContent.trim(), body_html: bodyEl().innerHTML, notes,
     kind: S.kind, paragraph_style: S.para, align: S.align, send_email: S.sendEmail,
-    drop_cap: { on: S.dcOn, lines: S.dcLines, weight: S.dcWeight, color: S.dcColor, frame: S.dcFrame },
+    drop_cap: { on: S.opening === 'dropcap', opening: S.opening, lines: S.dcLines, weight: S.dcWeight, color: S.dcColor, frame: S.dcFrame },
     slug: S.slug ? slugify(S.slug) : cur.post.slug,
     section: S.section || null, cover_url: S.coverUrl || null, cover_caption: S.coverCaption || null,
   };
@@ -243,7 +247,7 @@ function wireEditor() {
   $('back').onclick = () => { location.hash = ''; };
   const seg = (id, key, conv = (v) => v) => $(id).querySelectorAll('button').forEach((b) => b.onclick = () => { S[key] = conv(b.dataset.v); applySettings(); save(); if (previewing) renderPreview(); });
   seg('kindSeg', 'kind'); seg('paraSeg', 'para'); seg('alignSeg', 'align');
-  seg('dcOnSeg', 'dcOn', (v) => v === 'on'); seg('dcLinesSeg', 'dcLines', Number); seg('dcFrameSeg', 'dcFrame'); seg('dcWeightSeg', 'dcWeight', Number);
+  seg('openSeg', 'opening'); seg('dcLinesSeg', 'dcLines', Number); seg('dcFrameSeg', 'dcFrame'); seg('dcWeightSeg', 'dcWeight', Number);
   $('dcColor').querySelectorAll('button').forEach((b) => b.onclick = () => { S.dcColor = b.dataset.v; applySettings(); save(); if (previewing) renderPreview(); });
   $('slug').oninput = (e) => { S.slug = e.target.value; save(); };
   $('section').oninput = (e) => { S.section = e.target.value.trim(); applyKicker(); save(); };
@@ -340,7 +344,7 @@ function layoutNotes() {
 /* ---------- drop cap & rail ---------- */
 function dropcap() {
   const lead = bodyEl().querySelector(':scope > p');
-  const ok = S.dcOn && fitDropcap($('sheet'), lead, { lines: S.dcLines, weight: S.dcWeight, frame: S.dcFrame, color: S.dcColor });
+  const ok = S.opening === 'dropcap' && fitDropcap($('sheet'), lead, { lines: S.dcLines, weight: S.dcWeight, frame: S.dcFrame, color: S.dcColor });
   $('sheet').classList.toggle('dc', !!ok);
 }
 function placeRail() {
@@ -433,7 +437,8 @@ function applySettings() {
   sheet.classList.toggle('review', S.kind === 'review'); sheet.classList.toggle('book', S.para === 'book'); sheet.classList.toggle('justify', S.align === 'justify');
   applyKicker(); $('section').value = S.section || '';
   const on = (id, val) => $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === String(val)));
-  on('kindSeg', S.kind); on('paraSeg', S.para); on('alignSeg', S.align); on('dcOnSeg', S.dcOn ? 'on' : 'off');
+  on('kindSeg', S.kind); on('paraSeg', S.para); on('alignSeg', S.align); on('openSeg', S.opening); $('dcFields').style.display = S.opening === 'dropcap' ? '' : 'none';
+  ['open-bold', 'open-sc'].forEach((c) => sheet.classList.remove(c)); if (S.opening === 'boldline') sheet.classList.add('open-bold'); if (S.opening === 'smallcaps') sheet.classList.add('open-sc');
   on('dcLinesSeg', S.dcLines); on('dcFrameSeg', S.dcFrame); on('dcWeightSeg', S.dcWeight); on('dcColor', S.dcColor);
   $('booksBox').style.display = S.kind === 'review' ? '' : 'none';
   $('slug').value = S.slug || ''; $('slug').placeholder = slugify(titleEl().textContent) || 'post-url';
