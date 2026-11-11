@@ -9,7 +9,7 @@ const dc = (frame = 'orn-double', lines = 3) => ({ on: true, lines, weight: 400,
 
 const IMG = {
   pantheon: 'Giovanni Paolo Panini - Interior of the Pantheon, Rome - Google Art Project.jpg',
-  hagia: 'Fossati 002.JPG',
+  hagia: 'Aya Sofia, Constantinople (BM 1889,0603.120).jpg',
   bavo: 'Interieur van de Sint-Bavokerk in Haarlem Rijksmuseum SK-A-359.jpeg',
   bavoChoir: 'Interior of the Choir of St Bavo at Haarlem 1660 Pieter Jansz Saenredam.jpg',
   ideal: 'Ideal City - Urbino.jpg',
@@ -38,7 +38,7 @@ const ARCH = {
 ${panel('Classical', '27 BC–AD 400', 'pantheon', 'Interior of the Pantheon, Rome, Giovanni Paolo Panini, c. 1734. National Gallery of Art, Washington.', 'Classical', 'Rome · the Pantheon, c. AD 113–125',
   'The Romans inherited the Greek orders and added the arch, the vault and concrete. The result was a new kind of interior: not a forest of columns but a single, unbroken volume.',
   [['Look for', 'columns with capitals, pediments, coffered ceilings, symmetry about a central axis'], ['The idea', 'order you can measure; the human body as the module of the whole']])}
-${panel('Byzantine', '330–1453', 'hagia', 'Interior of Hagia Sophia, after the Fossati brothers, 1847–49.', 'Byzantine', 'Constantinople · Hagia Sophia, 532–537',
+${panel('Byzantine', '330–1453', 'hagia', 'Interior of Hagia Sophia, lithograph by Louis Haghe after Gaspare Fossati, 1852. British Museum.', 'Byzantine', 'Constantinople · Hagia Sophia, 532–537',
   'Justinian’s architects set a vast dome on four arches, with pendentives carrying the circle down onto the square. Ringed with windows at its base, the dome seems to float on light.',
   [['Look for', 'domes on pendentives, mosaics in gold, low-relief carving, centralized plans'], ['The idea', 'heaven brought down; the interior as a vision rather than a structure']])}
 ${panel('Gothic', '1140–1500', 'bavo', 'Interior of the Church of St Bavo in Haarlem, Pieter Jansz. Saenredam, 1636. Rijksmuseum, Amsterdam.', 'Gothic', 'Haarlem · St Bavo, 15th century',
@@ -75,7 +75,7 @@ ${panel('Gothic Revival', '1740–1900', 'schinkel', 'Gothic Cathedral by the Wa
 <h2>Two Ways to Light a Church</h2>
 <p>Put a Byzantine interior beside a Gothic one and the difference in ambition is immediate. One gathers light into a dome; the other dissolves the wall into windows.</p>
 <div class="pair">
-<figure><img src="${img('hagia', 1000)}" alt="Interior of Hagia Sophia: a huge dome above arcades, lamps hanging on chains."><figcaption><b>Light from above</b>Hagia Sophia, after the Fossati brothers, 1847–49.</figcaption></figure>
+<figure><img src="${img('hagia', 1000)}" alt="Interior of Hagia Sophia: a huge dome above arcades, lamps hanging on chains."><figcaption><b>Light from above</b>Hagia Sophia, Louis Haghe after Gaspare Fossati, 1852. British Museum.</figcaption></figure>
 <figure><img src="${img('bavoChoir', 1000)}" alt="Whitewashed Gothic church choir with tall pointed arches and clear windows."><figcaption><b>Light from the sides</b>Choir of St Bavo, Haarlem, Pieter Saenredam, 1660. Worcester Art Museum.</figcaption></figure>
 </div>
 <p>Saenredam’s churches are Reformed: the images gone, the walls whitewashed, the windows clear.${fn('c', 3)} What remains is the Gothic structure itself, and a light that falls equally on everyone in the room.</p>

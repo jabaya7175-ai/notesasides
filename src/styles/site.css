@@ -8,6 +8,7 @@
 html.light{ color-scheme:light; --paper:#F3ECDD; --ink:#1E2836; --ink-soft:#4A5566; --rule:#CFC4AE; --red:#B3332B; --gold:#A8812F; --quote-bar:#B9AE97; }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{overflow-x:clip}
 body{font-family:var(--serif);font-size:var(--fs);line-height:var(--lh);-webkit-font-smoothing:antialiased;
   font-variant-numeric:oldstyle-nums proportional-nums;font-kerning:normal}
 a{color:inherit}
