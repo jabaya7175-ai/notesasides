@@ -1525,6 +1525,8 @@ export function initDesk(ctx) {
     for (const raw of String(text).replace(/\r/g, '').split('\n')) {
       const l = raw.trim(); if (!l) continue;
       if (ts.test(l)) { cur = { s: toSec(l), t: '' }; out.push(cur); continue; }
+      const inline = l.match(/^((?:\d{1,2}:)?\d{1,2}:\d{2})\s+(.+)$/);
+      if (inline) { cur = { s: toSec(inline[1]), t: inline[2] }; out.push(cur); continue; }
       if (/^\d+ (seconds?|minutes?|hours?)(, \d+ (seconds?|minutes?))*$/i.test(l)) continue; // screen-reader duplicates
       if (!cur) { cur = { s: -1, t: '' }; out.push(cur); }
       cur.t += (cur.t ? ' ' : '') + l;
@@ -1549,19 +1551,9 @@ export function initDesk(ctx) {
     }
     let alt = 0;
     turns.forEach((tn) => { if (!tn.who && changes) tn.who = `Speaker ${(alt++ % 2) + 1}`; });
-    // Paragraphs: about three sentences, or about 40 seconds when the captions have no punctuation.
-    const paras = (tn) => {
-      const out = []; let p = null, sentences = 0;
-      for (const part of tn.parts) {
-        if (!p) { p = { s: part.s, t: '' }; out.push(p); sentences = 0; }
-        p.t += (p.t ? ' ' : '') + part.t;
-        sentences += (part.t.match(/[.!?…]["”’)]?(\s|$)/g) || []).length;
-        const long = part.s >= 0 && p.s >= 0 && part.s - p.s > 40;
-        if ((sentences >= 3 && /[.!?…]["”’)]?$/.test(part.t)) || (long && !/[,;:]$/.test(part.t) && p.t.length > 240)) p = null;
-      }
-      return out;
-    };
-    const cap = (x) => x.replace(/^\s*(\p{Ll})/u, (c) => c.toUpperCase()).replace(/\[(music|applause|laughter|inaudible)[^\]]*\]/gi, (m) => `<i>${m}</i>`);
+    // Each caption segment stays its own line, exactly as YouTube lists them.
+    const paras = (tn) => tn.parts.map((part) => ({ s: part.s, t: part.t }));
+    const cap = (x) => x.replace(/\[(music|applause|laughter|inaudible)[^\]]*\]/gi, (m) => `<i>${m}</i>`);
     const ts = (sec) => sec >= 0 ? `<a class="ts" data-t="${Math.floor(sec)}" href="https://www.youtube.com/watch?v=${escH(vid)}&amp;t=${Math.floor(sec)}s" title="Play from here">${fmtTs(sec)}</a>` : '';
     return `<div class="tr" data-v="${escH(vid)}">${note ? `<p class="src"><i>${escH(note)}</i></p>` : ''}` +
       turns.filter((tn) => tn.parts.length).map((tn) => `<section class="tr-turn">${tn.who ? `<h4 class="tr-who" data-who="${escH(tn.who)}" title="Click to rename this speaker">${escH(tn.who)}</h4>` : ''}` +

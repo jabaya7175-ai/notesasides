@@ -514,7 +514,7 @@ body.previewing #preview{display:block}
 .sh-body .tr-who{margin:0 0 .25em;font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7A1A17;cursor:pointer;display:inline-block;border-radius:3px;padding:0 3px;margin-left:-3px}
 .sh-body .tr-who:hover{background:rgba(122,26,23,.08)}
 .sh-body .tr-who[contenteditable=true]{background:#FFF;outline:1px solid #E9C46A;text-transform:none;letter-spacing:0;cursor:text}
-.sh-body .tr p{position:relative;margin:0 0 .55em;line-height:1.55}
+.sh-body .tr p{position:relative;margin:0 0 .3em;line-height:1.5}
 .sh-body a.ts{position:absolute;left:-64px;width:52px;text-align:right;top:.2em;font-size:11.5px;line-height:1.4;color:#2E6DB4;text-decoration:none;font-variant-numeric:lining-nums tabular-nums;cursor:pointer;border-radius:3px}
 .sh-body a.ts:hover{background:rgba(46,109,180,.12);color:#1B4F8A}
 .sh-body a.ts::before{content:"▸ ";opacity:0;font-size:9px}
