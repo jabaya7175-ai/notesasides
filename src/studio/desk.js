@@ -997,6 +997,7 @@ export function initDesk(ctx) {
       }
       // Text stays selectable (to highlight or tie a note); anything else acts like the board.
       if (e.target.closest('a.ts')) return;
+      if (e.target.matches('.page, .pdf-scroll, .nt-body, .q-body')) return; // its scroll bar
       if (e.target.closest('[contenteditable], .textLayer span') && !e.shiftKey) { if (sel.size) setSel([]); return; }
       document.activeElement?.blur?.(); if (spaceDown) startPan(e); else startMarquee(e); return;
     }
@@ -1226,7 +1227,7 @@ export function initDesk(ctx) {
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
     const sc = e.target.closest('.page, .nt-body, .q-body, .pdf-scroll'), host = e.target.closest('.it');
-    if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel'))) return; // scroll the selected piece's text
+    if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel') || host.classList.contains('locked'))) return; // scroll the selected (or locked) piece's text
     e.preventDefault();
     // The wheel zooms at the cursor; hold Space and drag to pan.
     zoomAt(view().z * Math.exp(-(e.deltaY || e.deltaX) * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
