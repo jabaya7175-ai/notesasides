@@ -50,7 +50,9 @@ export function mdToHtml(md) {
 }
 
 export function initDesk(ctx) {
-  const { sb, toast, confirmBox, upload, openPost } = ctx;
+  const { sb, confirmBox, upload, openPost } = ctx;
+  // The board stays quiet: only problems are reported, never routine confirmations.
+  const toast = (msg) => { if (/could not|couldn’t|failed|not allowed|blocked|no transcript|no article|nothing to|paste a youtube|has no transcript|has one page|kept\. unlock/i.test(String(msg))) ctx.toast(msg); };
   const $ = (id) => document.getElementById(id);
   const vp = $('deskVp'), world = $('deskWorld'), svg = $('deskLinks'), grid = $('deskGrid');
   const rulerX = $('rulerX'), rulerY = $('rulerY');
@@ -1172,8 +1174,7 @@ export function initDesk(ctx) {
     // Double-click a text box's width handle: back to one line (auto width).
     const rz = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.classList?.contains('rz') && n.closest('.it.text'));
     if (rz) { const it = byId(rz.closest('.it').dataset.id); it.autoW = true; place(it); measureText(it); save(); return; }
-    const hitPiece = document.elementsFromPoint(e.clientX, e.clientY).some((n) => n.closest?.('.it, .lk') && world.contains(n));
-    if (!hitPiece && tool === 'select') { const p = toWorld(e.clientX, e.clientY); const it = addItem('text', p.x, p.y, {}); els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); }
+    // (Double-clicking empty board does nothing; use the Text tool to add text.)
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
