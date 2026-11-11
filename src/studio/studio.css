@@ -376,12 +376,12 @@ body.previewing #preview{display:block}
 .pc-s{margin:6px 0 0;font-size:13px;font-style:italic;color:var(--ink-soft);line-height:1.3}
 .it.post .mini{margin:auto 0 0;align-self:flex-start;color:var(--ink-soft)} .it.post .mini:hover{color:var(--ink);background:rgba(255,255,255,.08)}
 /* Scrolling inside pieces: a slim dark pill hugging the right edge, no track */
-.it .page::-webkit-scrollbar,.it .nt-body::-webkit-scrollbar,.it .q-body::-webkit-scrollbar{width:12px}
-.it .page::-webkit-scrollbar-track,.it .nt-body::-webkit-scrollbar-track,.it .q-body::-webkit-scrollbar-track{background:transparent;margin:16px 0}
-.it .page::-webkit-scrollbar-thumb,.it .nt-body::-webkit-scrollbar-thumb,.it .q-body::-webkit-scrollbar-thumb{background:rgba(30,40,54,.55);border-radius:99px;border:4px solid transparent;border-left-width:3px;border-right-width:5px;background-clip:padding-box;min-height:48px}
+.it .page::-webkit-scrollbar,.it .nt-body::-webkit-scrollbar,.it .q-body::-webkit-scrollbar,.it .pdf-scroll::-webkit-scrollbar{width:12px}
+.it .page::-webkit-scrollbar-track,.it .nt-body::-webkit-scrollbar-track,.it .q-body::-webkit-scrollbar-track,.it .pdf-scroll::-webkit-scrollbar-track{background:transparent;margin:16px 0}
+.it .page::-webkit-scrollbar-thumb,.it .nt-body::-webkit-scrollbar-thumb,.it .q-body::-webkit-scrollbar-thumb,.it .pdf-scroll::-webkit-scrollbar-thumb{background:rgba(30,40,54,.55);border-radius:99px;border:4px solid transparent;border-left-width:3px;border-right-width:5px;background-clip:padding-box;min-height:48px}
 .it .page::-webkit-scrollbar-thumb:hover{background-color:rgba(30,40,54,.8)}
-.it .page::-webkit-scrollbar-button,.it .nt-body::-webkit-scrollbar-button,.it .q-body::-webkit-scrollbar-button{display:none;height:0}
-@supports not selector(::-webkit-scrollbar){.it .page,.it .nt-body,.it .q-body{scrollbar-width:thin;scrollbar-color:rgba(30,40,54,.55) transparent}}
+.it .page::-webkit-scrollbar-button,.it .nt-body::-webkit-scrollbar-button,.it .q-body::-webkit-scrollbar-button,.it .pdf-scroll::-webkit-scrollbar-button{display:none;height:0}
+@supports not selector(::-webkit-scrollbar){.it .page,.it .nt-body,.it .q-body,.it .pdf-scroll{scrollbar-width:thin;scrollbar-color:rgba(30,40,54,.55) transparent}}
 .sh-body .cont{text-indent:0}
 .it.contpage .sh-title{display:none}
 .it.image .im-cap:empty{display:none}
@@ -412,11 +412,14 @@ body.previewing #preview{display:block}
 .pdf-bar .pg:hover{background:rgba(255,255,255,.12)}
 .pdf-n{font-variant-numeric:lining-nums;min-width:52px;text-align:center}
 .pdf-bar .mini{color:#E9E2D2}
-.pdf-page{position:relative;flex:1;min-height:0;background:#FFF}
-.pdf-page canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.pdf-page .marks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.pdf-page .marks.erasing path{pointer-events:stroke}
-.it.inking,.it.inking .pdf-page{cursor:crosshair}
+.pdf-scroll{position:relative;flex:1;min-height:0;overflow:hidden;background:#FFF}
+.it.pdf.joined .pdf-scroll{overflow-y:auto;background:#5B6573}
+.pdf-pg{position:relative;width:100%;background:#FFF}
+.it.pdf.joined .pdf-pg + .pdf-pg{margin-top:10px}
+.pdf-pg canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pdf-pg .marks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.pdf-pg .marks.erasing path{pointer-events:stroke}
+.it.inking,.it.inking .pdf-pg{cursor:crosshair}
 /* Link cards */
 .it.link{background:#F6F1E6;color:#1E2836;display:flex;flex-direction:column;overflow:hidden}
 .lk-img{width:100%;height:150px;object-fit:cover;flex:none;display:block;pointer-events:none}
@@ -451,16 +454,16 @@ body.previewing #preview{display:block}
 .it.text > .rz::after{display:none}
 .it.text:hover > .rz{opacity:1;pointer-events:auto}
 /* PDF text layer (selectable, invisible text) */
-.pdf-page .textLayer{position:absolute;inset:0;overflow:clip;line-height:1;text-align:initial;transform-origin:0 0;z-index:2;user-select:none;-webkit-user-select:none}
-.pdf-page .textLayer :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:inherit;transform-origin:0% 0%}
-.pdf-page .textLayer span.markedContent{top:0;height:0}
-.pdf-page .textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:-1;cursor:default;user-select:none}
+.pdf-pg .textLayer{position:absolute;inset:0;overflow:clip;line-height:1;text-align:initial;transform-origin:0 0;z-index:2;user-select:none;-webkit-user-select:none}
+.pdf-pg .textLayer :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:inherit;transform-origin:0% 0%}
+.pdf-pg .textLayer span.markedContent{top:0;height:0}
+.pdf-pg .textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:-1;cursor:default;user-select:none}
 .it.pdf.sel .textLayer{user-select:text;-webkit-user-select:text}
 .it.pdf.sel .textLayer span{cursor:text}
-.pdf-page .textLayer ::selection{background:rgba(46,109,180,.3)}
+.pdf-pg .textLayer ::selection{background:rgba(46,109,180,.3)}
 .it.inking .textLayer{pointer-events:none}
-.pdf-page .marks{z-index:1}
-.pdf-page .marks.erasing rect{pointer-events:all}
+.pdf-pg .marks{z-index:1}
+.pdf-pg .marks.erasing rect{pointer-events:all}
 .desk-fmt.pdfmode [data-cmd=bold],.desk-fmt.pdfmode [data-cmd=italic]{display:none}
 /* Back / Forward */
 .hist-row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px}
@@ -504,6 +507,17 @@ body.previewing #preview{display:block}
 .sh-body a.ts{font-size:12px;color:#2E6DB4;text-decoration:none;font-variant-numeric:lining-nums;margin-right:4px}
 .desk-vp.space,.desk-vp.space *{cursor:grab!important}
 .desk-vp{cursor:default}
+/* Read-only sheets (clipped articles, transcripts): text selectable once selected */
+.it.readonly .sh-title{pointer-events:none}
+.it.readonly.sel .sh-body{user-select:text;-webkit-user-select:text;cursor:text}
+.it.readonly .grip .sz::after{content:" · read-only"}
+/* PDF layout question */
+.desk-ask{position:absolute;left:50%;top:44px;transform:translateX(-50%);z-index:9;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:420px;text-align:center}
+.desk-ask[hidden]{display:none}
+.desk-ask p{margin:0 0 10px;font-size:15px;color:var(--ink)}
+.desk-ask div{display:flex;gap:8px;justify-content:center}
+.desk-ask button{all:unset;cursor:pointer;padding:6px 12px;border:1px solid var(--rule);border-radius:7px;font-size:14.5px;color:var(--ink)}
+.desk-ask button:hover{border-color:#E9C46A;background:var(--hover)}
 /* Formatting bar over selected text */
 .desk-fmt{position:absolute;z-index:8;display:flex;align-items:center;gap:3px;padding:5px 6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45)}
 .desk-fmt[hidden]{display:none}

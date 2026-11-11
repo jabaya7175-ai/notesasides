@@ -165,7 +165,7 @@ export function initDesk(ctx) {
       case 'text': return `<div class="tx-body" contenteditable="true" data-ph="Text">${it.html || ''}</div><div class="rz"></div>`;
       case 'rect': case 'ellipse': return `<svg class="shp"></svg><div class="rz"></div>`;
       case 'line': return `<svg class="ln"></svg>`;
-      case 'pdf': return `<div class="pdf-bar"><span class="pdf-t">${escH(it.title || 'PDF')}</span><button class="pg" data-pg="-1" title="Previous page">‹</button><span class="pdf-n">${it.page || 1} / ${it.pages || '…'}</span><button class="pg" data-pg="1" title="Next page">›</button><button class="mini" data-act="openpdf" title="Open the PDF in a new tab">Open</button></div><div class="pdf-page"><canvas></canvas><svg class="marks"></svg></div><div class="rz"></div>`;
+      case 'pdf': return `<div class="pdf-bar"><span class="pdf-t">${escH(it.title || 'PDF')}</span><span class="pdf-n">…</span><button class="mini" data-act="openpdf" title="Open the PDF in a new tab">Open</button></div><div class="pdf-scroll"></div><div class="rz"></div>`;
       case 'link': return `${it.image ? `<img class="lk-img" src="${escH(it.image)}" alt="" draggable="false" referrerpolicy="no-referrer">` : ''}<div class="lk-b"><p class="lk-site">${escH(it.site || '')}</p><p class="lk-t">${escH(it.title || it.url)}</p>${it.description ? `<p class="lk-d">${escH(it.description)}</p>` : ''}<div class="lk-acts"><a class="mini" href="${escH(it.url)}" target="_blank" rel="noopener">Open ↗</a><button class="mini" data-act="clip" title="Bring the article's text onto the board as sheets">Clip text → sheets</button></div></div><div class="rz"></div>`;
       case 'video': return `<div class="vd-bar"><span class="vd-t">${escH(it.title || 'YouTube video')}</span><span class="vd-c">${escH(it.channel || '')}</span></div><div class="vd-frame"><iframe src="https://www.youtube-nocookie.com/embed/${escH(it.vid)}?rel=0" title="${escH(it.title || 'YouTube video')}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><div class="vd-acts"><a class="mini" href="https://www.youtube.com/watch?v=${escH(it.vid)}" target="_blank" rel="noopener">Open on YouTube ↗</a><button class="mini" data-act="transcript">Transcript → sheet</button></div><div class="vd-paste" hidden><p>YouTube didn't let the board fetch this transcript. On YouTube, under the video open <b>…more → Show transcript</b>, select all of it, copy, and paste it here:</p><textarea placeholder="Paste the transcript"></textarea><div><button class="mini" data-act="tpaste">Make transcript sheet</button><button class="mini" data-act="tcancel">Cancel</button></div></div><div class="rz"></div>`;
       case 'post': return `<p class="pc-k">${escH(it.status || 'Post')}</p><p class="pc-t">${escH(it.title || 'Untitled')}</p>${it.subtitle ? `<p class="pc-s">${escH(it.subtitle)}</p>` : ''}<button class="mini" data-act="open">Open in editor</button>`;
@@ -193,7 +193,7 @@ export function initDesk(ctx) {
       if (ed.classList.contains('tx-body')) it.html = ed.innerHTML;
       save();
     }));
-    el.querySelectorAll('.page, .nt-body, .q-body').forEach((sc) => sc.addEventListener('scroll', () => { if (board.links.some((l) => l.anc)) { dirty.items.add('_anc'); schedule(); } }, { passive: true }));
+    el.querySelectorAll('.page, .nt-body, .q-body, .pdf-scroll').forEach((sc) => sc.addEventListener('scroll', () => { if (board.links.some((l) => l.anc)) { dirty.items.add('_anc'); schedule(); } }, { passive: true }));
     el.addEventListener('input', () => { if (board.links.some((l) => l.anc)) { dirty.items.add('_anc'); schedule(); } });
     el.addEventListener('focusin', () => el.classList.add('editing'));
     el.addEventListener('focusout', () => setTimeout(() => { if (!el.contains(document.activeElement)) el.classList.remove('editing'); }));
@@ -205,7 +205,6 @@ export function initDesk(ctx) {
       el.querySelector('.tx-body').addEventListener('input', () => { it.html = el.querySelector('.tx-body').innerHTML; measureText(it); });
     }
     if (it.type === 'pdf') {
-      el.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => pdfGo(it, +b.dataset.pg));
       el.querySelector('[data-act=openpdf]').onclick = async () => { const u = await signedUrl(it.path); if (u) open(u, '_blank', 'noopener'); };
       renderPdf(it);
     }
@@ -234,12 +233,14 @@ export function initDesk(ctx) {
   function place(it) {
     const el = els.get(it.id); if (!el) return;
     el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.zIndex = it.z || 1;
-    if (el.classList.contains('locked') !== !!it.locked) {
-      el.classList.toggle('locked', !!it.locked);
-      el.querySelectorAll('[contenteditable]').forEach((ed) => { ed.contentEditable = it.locked ? 'false' : 'true'; });
-      el.querySelectorAll('input').forEach((i) => { i.readOnly = !!it.locked; });
+    const ro = !!(it.locked || it.readonly);
+    el.classList.toggle('locked', !!it.locked); el.classList.toggle('readonly', !!it.readonly);
+    if (el.dataset.ro !== String(ro)) {
+      el.dataset.ro = String(ro);
+      el.querySelectorAll('[contenteditable]').forEach((ed) => { ed.contentEditable = ro ? 'false' : 'true'; });
+      el.querySelectorAll('input').forEach((i) => { i.readOnly = ro; });
     }
-    if (it.type === 'pdf' && it.pw) el.querySelector('.pdf-page')?.style.setProperty('--scale-factor', String(it.w / it.pw));
+    if (it.type === 'pdf' && it.pw) el.querySelectorAll('.pdf-pg').forEach((w) => w.style.setProperty('--scale-factor', String(it.w / it.pw)));
     const autoW = it.type === 'text' && it.autoW !== false;
     el.style.width = autoW ? 'max-content' : it.w + 'px';
     el.classList.toggle('autow', autoW);
@@ -364,16 +365,17 @@ export function initDesk(ctx) {
       const it = byId(selected);
       let extra = '';
       if (['text', 'rect', 'ellipse', 'line'].includes(it.type)) extra = styleControls(it);
-      if (it.type === 'pdf') extra = `<button data-a="pgprev" title="Previous page">‹</button><span class="pgn">${it.page || 1} / ${it.pages || '…'}</span><button data-a="pgnext" title="Next page">›</button><i class="dv"></i>` +
+      if (it.type === 'pdf') extra = `<button data-a="pdflayout" title="Switch between one scrolling document and separate pages">${it.mode === 'page' ? 'Join pages' : 'Separate pages'}</button><i class="dv"></i>` +
         [['pen', 'Pen'], ['hl', 'Highlight'], ['erase', 'Erase']].map(([k, l]) => `<button class="sb${ink?.mode === k ? ' on' : ''}" data-ink-mode="${k}">${l}</button>`).join('') +
         (ink && ink.mode !== 'erase' ? Object.entries(PEN).map(([k, c]) => `<button class="sw${ink.color === k ? ' on' : ''}" data-pen="${k}" style="background:${c}" title="${k}"></button>`).join('') : '') +
-        '<button data-a="clearpg" title="Remove all marks on this page">Clear page</button><i class="dv"></i>';
+        '<button data-a="clearpg" title="Remove every pen mark and highlight">Clear marks</button><i class="dv"></i>';
       if (it.type === 'note') extra = Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
       if (it.type === 'sheet') {
         extra = `<select data-a="paper" title="Paper size">${Object.entries(PAPER).map(([k, [n, w, h]]) => `<option value="${k}"${it.paper === k ? ' selected' : ''}>${n} (${w} × ${h})</option>`).join('')}<option value="custom"${!it.paper || it.paper === 'custom' ? ' selected' : ''}>Custom (${fmtIn(it.w)} × ${fmtIn(it.h)})</option></select>` +
           `<button data-a="orient" title="Portrait / landscape">${it.w > it.h ? 'Landscape' : 'Portrait'}</button><button data-a="zoom">Zoom to sheet</button>` +
           (overflows(it) ? '<button data-a="split" title="Flow the overflow onto new pages">Split into pages</button>' : '') +
-          (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '');
+          (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '') +
+          (it.readonly ? '<button data-a="ro" title="Allow typing in this sheet">Make editable</button>' : '');
       }
       bar.innerHTML = `<span>${LABEL[it.type] || 'Piece'}</span>${extra}` +
         `<button data-a="lock" title="Lock or unlock (Ctrl+Shift+L)">${it.locked ? '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg> Unlock' : '<svg viewBox="0 0 24 24" class="ic"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Lock'}</button>` +
@@ -391,16 +393,19 @@ export function initDesk(ctx) {
       bar.querySelector('[data-a=zoom]')?.addEventListener('click', () => zoomToItem(it));
       if (['text', 'rect', 'ellipse', 'line'].includes(it.type)) wireStyle(bar, it);
       if (it.type === 'pdf') {
-        bar.querySelector('[data-a=pgprev]').onclick = () => pdfGo(it, -1);
-        bar.querySelector('[data-a=pgnext]').onclick = () => pdfGo(it, 1);
+        bar.querySelector('[data-a=pdflayout]').onclick = () => (it.mode === 'page' ? pdfJoin(it) : pdfToPages(it));
         bar.querySelectorAll('[data-ink-mode]').forEach((b) => b.onclick = () => {
           const m = b.dataset.inkMode;
           setInk(ink?.mode === m ? null : { id: it.id, mode: m, color: m === 'hl' ? (ink?.mode === 'hl' ? ink.color : 'yellow') : m === 'pen' ? (ink?.mode === 'pen' ? ink.color : 'red') : null });
         });
         bar.querySelectorAll('[data-pen]').forEach((b) => b.onclick = () => { ink.color = b.dataset.pen; renderSelBar(); });
-        bar.querySelector('[data-a=clearpg]').onclick = () => { if (it.marks) delete it.marks[it.page || 1]; renderMarks(it); save(); };
+        bar.querySelector('[data-a=clearpg]').onclick = async () => {
+          if (!(await confirmBox('Clear the marks?', '<p>Pen marks, highlights and underlines on this PDF will be removed. Notes tied to passages stay.</p>', 'Clear'))) return;
+          for (const k of Object.keys(it.marks || {})) it.marks[k] = it.marks[k].filter((m) => m.t === 'anc'); renderMarks(it); save();
+        };
       }
       bar.querySelector('[data-a=split]')?.addEventListener('click', () => splitSheet(it));
+      bar.querySelector('[data-a=ro]')?.addEventListener('click', () => { chainOf(it).forEach((pg) => { delete pg.readonly; place(pg); }); renderSelBar(); save(); toast('You can type in it now.'); });
       bar.querySelector('[data-a=join]')?.addEventListener('click', () => joinSheets(it));
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
       bar.querySelector('[data-a=lock]').onclick = () => toggleLock(!it.locked);
@@ -497,7 +502,7 @@ export function initDesk(ctx) {
     const root = it.chain || it.id; it.chain = root; it.page ||= 1;
     // Make room: later pages shift one number along.
     board.items.forEach((o) => { if (o.chain === root && o.id !== it.id && o.page > it.page) { o.page++; refreshLabel(o); } });
-    const nx = { id: uid(), type: 'sheet', paper: it.paper, w: it.w, h: it.h, x: it.x + it.w + 48, y: it.y, z: ++zTop, rot: 0, title: it.title || '', html: moved.innerHTML, chain: root, page: it.page + 1 };
+    const nx = { id: uid(), type: 'sheet', paper: it.paper, w: it.w, h: it.h, x: it.x + it.w + 48, y: it.y, z: ++zTop, rot: 0, title: it.title || '', html: moved.innerHTML, chain: root, page: it.page + 1, ...(it.readonly ? { readonly: true } : {}) };
     board.items.forEach((o) => { if (o.chain === root && o.page > nx.page) { o.x += it.w + 48; place(o); } });
     board.items.push(nx); mount(nx); refreshLabel(it);
     return nx;
@@ -546,10 +551,17 @@ export function initDesk(ctx) {
     const spans = world.querySelectorAll(`.anc[data-anc="${l.anc}"]`);
     if (!spans.length) {
       const host = byId(l.b); if (host?.type !== 'pdf') return null;
-      const m = (host.marks?.[host.page || 1] || []).find((x) => x.t === 'anc' && x.id === l.anc); if (!m) return null; // on another page: pin to the PDF
-      const r = m.r[0], sx = host.w / 1000, sy = (host.h - PDF_BAR) / markH(host);
-      const right = toward && host.x + (r[0] + r[2]) * sx < toward.x;
-      return { x: host.x + (right ? r[0] + r[2] + 2 : r[0] - 2) * sx, y: host.y + PDF_BAR + (r[1] + r[3] / 2) * sy };
+      for (const [p, list] of Object.entries(host.marks || {})) {
+        const m = list.find((x) => x.t === 'anc' && x.id === l.anc); if (!m) continue;
+        const w = pageEl(host, +p); if (!w) return null;
+        const sr = w.querySelector('.marks').getBoundingClientRect(), H = markH(host, +p), r = m.r[0];
+        const scr = (x, y) => [sr.left + x / 1000 * sr.width, sr.top + y / H * sr.height];
+        const right = toward && toWorld(...scr(r[0] + r[2], 0)).x < toward.x;
+        let [cx, cy] = scr(right ? r[0] + r[2] + 2 : r[0] - 2, r[1] + r[3] / 2);
+        const box = w.closest('.pdf-scroll').getBoundingClientRect(); cy = Math.min(Math.max(cy, box.top + 6), box.bottom - 6);
+        return toWorld(cx, cy);
+      }
+      return null;
     }
     const first = spans[0].getClientRects()[0], last = [...spans[spans.length - 1].getClientRects()].pop();
     if (!first || !last) return null;
@@ -609,7 +621,8 @@ export function initDesk(ctx) {
     const r = s.getRangeAt(0), host = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
     const ed = host?.closest('[contenteditable], .textLayer'); if (!ed || !world.contains(ed)) { hideFmt(); return; }
     fmtRange = r.cloneRange(); fmtEd = ed;
-    fmt.classList.toggle('pdfmode', ed.classList.contains('textLayer') || !!byId(ed.closest('.it')?.dataset.id)?.locked);
+    const hostIt = byId(ed.closest('.it')?.dataset.id);
+    fmt.classList.toggle('pdfmode', ed.classList.contains('textLayer') || !!hostIt?.locked || !!hostIt?.readonly);
     const rr = r.getBoundingClientRect(), mr = $('deskVp').parentElement.getBoundingClientRect();
     fmt.hidden = false;
     const w = fmt.offsetWidth, top = rr.top - mr.top - fmt.offsetHeight - 10;
@@ -636,25 +649,32 @@ export function initDesk(ctx) {
   });
   // PDFs: highlights, underlines and passage anchors are stored as rectangles on the page.
   function pdfSelRects(it, range) {
-    const svg = els.get(it.id).querySelector('.marks'), sr = svg.getBoundingClientRect(), H = markH(it), seen = new Set();
-    return [...range.getClientRects()].filter((r) => r.width > 1 && r.height > 1).map((r) =>
-      [(r.left - sr.left) / sr.width * 1000, (r.top - sr.top) / sr.height * H, r.width / sr.width * 1000, r.height / sr.height * H].map((v) => Math.round(v * 10) / 10))
-      .filter((r) => r[0] < 1000 && r[1] < H && r[0] + r[2] > 0 && r[1] + r[3] > 0)
-      .filter((r) => { const k = r.join(','); if (seen.has(k)) return false; seen.add(k); return true; });
+    const out = new Map(), rects = [...range.getClientRects()].filter((r) => r.width > 1 && r.height > 1);
+    els.get(it.id).querySelectorAll('.pdf-pg').forEach((w) => {
+      const p = +w.dataset.p, sr = w.querySelector('.marks').getBoundingClientRect(), H = markH(it, p), seen = new Set();
+      const list = rects.filter((r) => r.top < sr.bottom && r.bottom > sr.top && r.left < sr.right && r.right > sr.left)
+        .map((r) => [(r.left - sr.left) / sr.width * 1000, (r.top - sr.top) / sr.height * H, r.width / sr.width * 1000, r.height / sr.height * H].map((v) => Math.round(v * 10) / 10))
+        .filter((r) => { const k = r.join(','); if (seen.has(k)) return false; seen.add(k); return true; });
+      if (list.length) out.set(p, list);
+    });
+    return out;
   }
   const overlaps = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
   function pdfFormat(b) {
-    const it = byId(fmtEd.closest('.it').dataset.id), rects = pdfSelRects(it, fmtRange); if (!rects.length) return;
-    const pg = it.page || 1; it.marks ||= {}; const list = (it.marks[pg] ||= []);
-    if (b.dataset.hl) list.push({ t: 'box', c: b.dataset.hl, r: rects });
-    else if (b.dataset.cmd === 'underline') list.push({ t: 'box', c: '#C0392B', u: 1, r: rects });
-    else if (b.dataset.cmd === 'clear') it.marks[pg] = list.filter((m) => m.t !== 'box' || !m.r.some((r) => rects.some((q) => overlaps(r, q))));
+    const it = byId(fmtEd.closest('.it').dataset.id), byPage = pdfSelRects(it, fmtRange); if (!byPage.size) return;
+    it.marks ||= {};
+    const add = (m) => byPage.forEach((r, p) => (it.marks[p] ||= []).push({ ...m, r }));
+    if (b.dataset.hl) add({ t: 'box', c: b.dataset.hl });
+    else if (b.dataset.cmd === 'underline') add({ t: 'box', c: '#C0392B', u: 1 });
+    else if (b.dataset.cmd === 'clear') byPage.forEach((rects, p) => { it.marks[p] = (it.marks[p] || []).filter((m) => m.t !== 'box' || !m.r.some((r) => rects.some((q) => overlaps(r, q)))); });
     else if (b.dataset.cmd === 'note') {
-      const id = uid(); list.push({ t: 'anc', id, r: rects });
+      const id = uid(); add({ t: 'anc', id });
+      const [p0, r0] = [...byPage.entries()][0];
+      const sr = pageEl(it, p0).querySelector('.marks').getBoundingClientRect();
+      const at = toWorld(sr.left, sr.top + r0[0][1] / markH(it, p0) * sr.height);
       getSelection().removeAllRanges(); hideFmt(); renderMarks(it);
-      const sx = it.w / 1000, sy = (it.h - PDF_BAR) / markH(it), yTop = it.y + PDF_BAR + rects[0][1] * sy;
       const [nw, nh] = SIZES.note;
-      const note = addItem('note', it.x + it.w + 72 + nw / 2, yTop - 24 + nh / 2, { color: 'yellow', rot: 0 });
+      const note = addItem('note', it.x + it.w + 72 + nw / 2, at.y - 24 + nh / 2, { color: 'yellow', rot: 0 });
       board.links.push({ id: uid(), a: note.id, b: it.id, anc: id });
       drawLinks(); save(); els.get(note.id).querySelector('.nt-body').focus({ preventScroll: true });
       return;
@@ -710,7 +730,7 @@ export function initDesk(ctx) {
     if (t === 'link') { const r = $('linkRow'); r.hidden = !r.hidden; if (!r.hidden) $('linkInput').focus(); return; }
     setTool(t);
   });
-  $('deskPdfInput').onchange = async () => { const files = [...$('deskPdfInput').files]; $('deskPdfInput').value = ''; const c = viewCenter(); for (const f of files) { const r = await uploadPdf(f); if (r) addItem('pdf', c.x, c.y, { path: r.path, title: r.title, page: 1, marks: {} }); c.x += 60; c.y += 60; } };
+  $('deskPdfInput').onchange = async () => { const files = [...$('deskPdfInput').files]; $('deskPdfInput').value = ''; const c = viewCenter(); for (const f of files) { const r = await uploadPdf(f); if (r) await placePdf(r, c.x, c.y); c.x += 60; c.y += 60; } };
   const addFromLinkRow = () => { const u = $('linkInput').value.trim(); if (!u) return; $('linkInput').value = ''; $('linkRow').hidden = true; const c = viewCenter(); addLink(u, c.x, c.y); };
   $('linkAdd').onclick = addFromLinkRow;
   $('linkInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addFromLinkRow(); if (e.key === 'Escape') $('linkRow').hidden = true; });
@@ -733,7 +753,7 @@ export function initDesk(ctx) {
   let drag = null, eatMouse = false;
   vp.addEventListener('mousedown', (e) => { if (eatMouse) { e.preventDefault(); eatMouse = false; } }, true);
   vp.addEventListener('pointerdown', (e) => {
-    eatMouse = false;
+    eatMouse = false; $('deskAsk').hidden = true;
     if (e.button === 1) { e.preventDefault(); startPan(e); return; }
     if (e.button !== 0) return;
     const lk = e.target.closest('.lk');
@@ -761,11 +781,11 @@ export function initDesk(ctx) {
     }
     if (spaceDown) { e.preventDefault(); startPan(e); return; }
     const itEl = e.target.closest('.it');
-    if (itEl && ink && itEl.dataset.id === ink.id && e.target.closest('.pdf-page')) {
+    if (itEl && ink && itEl.dataset.id === ink.id && e.target.closest('.pdf-pg')) {
       e.preventDefault(); eatMouse = true;
-      const it = byId(ink.id);
+      const it = byId(ink.id), pgn = +e.target.closest('.pdf-pg').dataset.p;
       if (ink.mode === 'erase') { eraseAt(it, e.clientX, e.clientY); drag = { mode: 'erase', it, moved: true }; }
-      else drag = { mode: 'ink', it, pts: [markPoint(it, e.clientX, e.clientY)], path: null, moved: true };
+      else drag = { mode: 'ink', it, p: pgn, pts: [markPoint(it, pgn, e.clientX, e.clientY)], path: null, moved: true };
       vp.setPointerCapture(e.pointerId); return;
     }
     if (itEl && byId(itEl.dataset.id)?.locked && tool !== 'string') {
@@ -803,6 +823,7 @@ export function initDesk(ctx) {
       }
       if (!e.shiftKey && e.target.closest('input, button, select, a, textarea, iframe')) return;
       if (it.type === 'pdf' && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.textLayer')) return; // select the PDF's text
+      if (it.readonly && sel.has(it.id) && !e.shiftKey && !e.altKey && e.target.closest('.sh-body')) return; // select a clipped article's text
       const ed = !e.shiftKey && e.target.closest('[contenteditable]');
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
       e.preventDefault(); eatMouse = true;
@@ -852,12 +873,13 @@ export function initDesk(ctx) {
         const w = Math.max(24, Math.round(drag.w + (E ? ddx : -ddx)));
         it.w = w; if (W) it.x = Math.round(drag.x + drag.w - w); place(it); measureText(it); return;
       }
-      const small = ['rect', 'ellipse', 'link', 'image'].includes(it.type);
+      const small = ['rect', 'ellipse', 'link', 'image', 'pdf'].includes(it.type);
       const minW = small ? 24 : IN, minH = small ? 24 : IN * 0.75;
       let w = drag.w + (E ? ddx : W ? -ddx : 0), h = drag.h + (S ? ddy : N ? -ddy : 0);
       // Proportions: always for PDFs and images (Alt frees an image), with Shift for anything else.
-      const bar = it.type === 'pdf' ? PDF_BAR : 0;
-      const ar = it.type === 'pdf' ? (it.ar || 1.294) : it.type === 'image' && it.ar && !e.altKey ? it.ar : e.shiftKey ? drag.h / drag.w : 0;
+      const onePage = it.type === 'pdf' && it.mode === 'page';
+      const bar = onePage ? PDF_BAR : 0;
+      const ar = onePage ? arOf(it, it.page || 1) : it.type === 'image' && it.ar && !e.altKey ? it.ar : e.shiftKey ? drag.h / drag.w : 0;
       if (ar) { if (E || W) h = w * ar + bar; else w = (h - bar) / ar; }
       w = Math.max(minW, w); h = Math.max(minH, h);
       if (!ar) { w = snap(w); h = snap(h); }
@@ -899,10 +921,10 @@ export function initDesk(ctx) {
       if (drag.end) setLineEnds(drag.it, f, p); else setLineEnds(drag.it, p, f);
       place(drag.it); paintLine(drag.it); updateLinks(new Set([drag.it.id]));
     } else if (drag.mode === 'ink') {
-      const pt = markPoint(drag.it, e.clientX, e.clientY), last = drag.pts[drag.pts.length - 1];
+      const pt = markPoint(drag.it, drag.p, e.clientX, e.clientY), last = drag.pts[drag.pts.length - 1];
       if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 2) return;
       drag.pts.push(pt);
-      const svg = els.get(drag.it.id).querySelector('.marks');
+      const svg = pageEl(drag.it, drag.p).querySelector('.marks');
       if (!drag.path) { drag.path = document.createElementNS(NS, 'path'); svg.appendChild(drag.path); }
       Object.entries(markAttrs(ink)).forEach(([k, v]) => drag.path.setAttribute(k, v));
       drag.path.setAttribute('d', ptsToD(drag.pts));
@@ -933,8 +955,8 @@ export function initDesk(ctx) {
       setTool('select'); select(it.id); save(); return;
     }
     if (d.mode === 'ink') {
-      if (d.pts.length > 1) { const pg = d.it.page || 1; d.it.marks ||= {}; (d.it.marks[pg] ||= []).push({ ...markStyle(ink), d: ptsToD(d.pts) }); }
-      renderMarks(d.it); save(); return;
+      if (d.pts.length > 1) { d.it.marks ||= {}; (d.it.marks[d.p] ||= []).push({ ...markStyle(ink), d: ptsToD(d.pts) }); }
+      renderMarks(d.it, d.p); save(); return;
     }
     if (d.mode === 'erase' || d.mode === 'lineEnd') { save(); return; }
     if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
@@ -952,7 +974,7 @@ export function initDesk(ctx) {
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
-    const sc = e.target.closest('.page, .nt-body, .q-body'), host = e.target.closest('.it');
+    const sc = e.target.closest('.page, .nt-body, .q-body, .pdf-scroll'), host = e.target.closest('.it');
     if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel'))) return; // scroll the selected piece's text
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) zoomAt(view().z * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
@@ -984,7 +1006,7 @@ export function initDesk(ctx) {
     if (d.kind === 'quote') addItem('quote', x, y, { html: escH(d.body).replace(/\n/g, '<br>'), source: d.source ? `— ${d.source}` : '' });
     if (d.kind === 'freewrite') { const m = mdToHtml(d.body); addItem('sheet', x, y, { title: d.title || m.title, html: m.html }); }
     if (d.kind === 'image') addItem('image', x, y, { url: d.url, caption: d.title || '' });
-    if (d.kind === 'pdf') addItem('pdf', x, y, { path: d.meta?.path, title: d.title, page: 1, marks: {} });
+    if (d.kind === 'pdf' && d.meta?.path) placePdf({ path: d.meta.path, title: d.title }, x, y);
     if (d.kind === 'link' && (d.meta?.video || ytId(d.url))) { addItem('video', x, y, { vid: d.meta?.video || ytId(d.url), url: d.url, title: d.title, channel: d.meta?.channel || '' }); return; }
     if (d.kind === 'link') addItem('link', x, y, { url: d.url, title: d.title, site: d.source || d.meta?.site, description: d.body || d.meta?.description, image: d.meta?.image, h: d.meta?.image ? 330 : 176 });
     if (d.kind === 'post') addItem('post', x, y, { postId: d.id, title: d.title, subtitle: d.subtitle, status: d.status === 'published' ? 'Published' : 'Draft' });
@@ -1024,7 +1046,7 @@ export function initDesk(ctx) {
       return;
     }
     for (const f of e.dataTransfer.files) {
-      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { const r = await uploadPdf(f); if (r) addItem('pdf', p.x, p.y, { path: r.path, title: r.title, page: 1, marks: {} }); }
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { const r = await uploadPdf(f); if (r) await placePdf(r, p.x, p.y); }
       else if (f.type.startsWith('image/')) await dropImage(f, p.x, p.y);
       else if (/\.(md|markdown|txt)$/i.test(f.name) || f.type.startsWith('text/')) {
         const text = await f.text(), m = mdToHtml(text);
@@ -1150,62 +1172,118 @@ export function initDesk(ctx) {
     if (libOnly) toast('PDF added to the library');
     return { path, title };
   }
+  // A PDF piece is either a single page (mode 'page') or the whole document stacked in one
+  // scrolling piece (mode 'joined'). Every page has its own canvas, selectable text and marks;
+  // marks are kept per page number in it.marks.
+  const pagesOf = (it) => it.mode === 'page' ? [it.page || 1] : Array.from({ length: it.pages || 1 }, (_, i) => i + 1);
+  const arOf = (it, p) => it.ars?.[p] || it.ar || 1.294;
+  const markH = (it, p) => Math.round(1000 * arOf(it, p));
+  const pageEl = (it, p) => els.get(it.id)?.querySelector(`.pdf-pg[data-p="${p}"]`);
+  const pdfObs = new Map();
   async function renderPdf(it) {
     const el = els.get(it.id); if (!el || !it.path) return;
     const tok = (renderTok.get(it.id) || 0) + 1; renderTok.set(it.id, tok);
     try {
       const doc = await pdfDoc(it.path);
-      it.pages = doc.numPages; it.page = Math.min(Math.max(1, it.page || 1), it.pages);
-      const pg = await doc.getPage(it.page), v1 = pg.getViewport({ scale: 1 }), ar = v1.height / v1.width;
       if (renderTok.get(it.id) !== tok) return;
-      if (Math.abs((it.ar || 0) - ar) > 0.002) { it.ar = ar; it.h = Math.round(it.w * ar) + PDF_BAR; place(it); updateLinks(new Set([it.id])); }
-      const scale = Math.min(2600 / v1.width, (it.w * 2) / v1.width), vpPdf = pg.getViewport({ scale });
-      const cv = document.createElement('canvas'); cv.width = Math.floor(vpPdf.width); cv.height = Math.floor(vpPdf.height);
-      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vpPdf }).promise;
-      if (renderTok.get(it.id) !== tok) return;
-      el.querySelector('.pdf-page canvas').replaceWith(cv);
-      // Selectable text over the page (transparent; sized by --scale-factor).
-      it.pw = v1.width;
-      const pgEl = el.querySelector('.pdf-page'); pgEl.style.setProperty('--scale-factor', String(it.w / v1.width));
-      pgEl.querySelector('.textLayer')?.remove();
-      const tl = document.createElement('div'); tl.className = 'textLayer'; pgEl.appendChild(tl);
-      const lib = await loadPdfjs();
-      await new lib.TextLayer({ textContentSource: pg.streamTextContent(), container: tl, viewport: pg.getViewport({ scale: 1 }) }).render().catch(() => {});
-      el.querySelector('.pdf-n').textContent = `${it.page} / ${it.pages}`;
-      const pn = $('deskSel').querySelector('.pgn'); if (pn && selected === it.id) pn.textContent = `${it.page} / ${it.pages}`;
+      it.pages = doc.numPages; if (it.mode === 'page') it.page = Math.min(Math.max(1, it.page || 1), it.pages);
+      const v1 = (await doc.getPage(pagesOf(it)[0])).getViewport({ scale: 1 });
+      it.pw = v1.width; if (!it.ar) it.ar = v1.height / v1.width;
+      if (it.mode === 'page' && Math.abs((it.h - PDF_BAR) - it.w * arOf(it, it.page)) > 2) { it.h = Math.round(it.w * arOf(it, it.page)) + PDF_BAR; place(it); updateLinks(new Set([it.id])); }
+      el.classList.toggle('joined', it.mode !== 'page');
+      const sc = el.querySelector('.pdf-scroll'), keep = sc.scrollTop;
+      pdfObs.get(it.id)?.disconnect();
+      sc.innerHTML = pagesOf(it).map((p) => `<div class="pdf-pg" data-p="${p}" style="aspect-ratio:1/${arOf(it, p)};--scale-factor:${it.w / it.pw}"><svg class="marks"></svg></div>`).join('');
+      sc.scrollTop = keep;
+      el.querySelector('.pdf-n').textContent = it.mode === 'page' ? `p. ${it.page} of ${it.pages}` : `${it.pages} page${it.pages > 1 ? 's' : ''}`;
       renderMarks(it);
+      const io = new IntersectionObserver((ents) => ents.forEach((en) => {
+        if (en.isIntersecting && !en.target.dataset.done) { en.target.dataset.done = '1'; drawPage(it, doc, +en.target.dataset.p, en.target, tok); }
+      }), { root: it.mode === 'page' ? null : sc, rootMargin: '800px 0px' });
+      sc.querySelectorAll('.pdf-pg').forEach((w) => io.observe(w)); pdfObs.set(it.id, io);
     } catch (e) { el.querySelector('.pdf-n').textContent = 'Could not load'; console.error(e); }
   }
-  function pdfGo(it, d) {
-    const n = Math.min(Math.max(1, (it.page || 1) + d), it.pages || 1); if (n === it.page) return;
-    it.page = n; renderPdf(it).then(() => updateLinks()); save();
+  async function drawPage(it, doc, p, wrap, tok) {
+    try {
+      const pg = await doc.getPage(p), v1 = pg.getViewport({ scale: 1 }), ar = v1.height / v1.width;
+      if (Math.abs(arOf(it, p) - ar) > 0.002) { (it.ars ||= {})[p] = +ar.toFixed(4); wrap.style.aspectRatio = `1/${ar}`; renderMarks(it, p); }
+      const scale = Math.min(2600 / v1.width, (it.w * 2) / v1.width), vpp = pg.getViewport({ scale });
+      const cv = document.createElement('canvas'); cv.width = Math.floor(vpp.width); cv.height = Math.floor(vpp.height);
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vpp }).promise;
+      if (renderTok.get(it.id) !== tok) return;
+      wrap.prepend(cv);
+      const tl = document.createElement('div'); tl.className = 'textLayer'; wrap.appendChild(tl);
+      const lib = await loadPdfjs();
+      await new lib.TextLayer({ textContentSource: pg.streamTextContent(), container: tl, viewport: v1 }).render().catch(() => {});
+      if (board.links.some((l) => l.anc && l.b === it.id)) updateLinks();
+    } catch (e) { console.error(e); }
   }
-  const markH = (it) => Math.round(1000 * (it.ar || 1.294));
-  function markPoint(it, cx, cy) {
-    const r = els.get(it.id).querySelector('.marks').getBoundingClientRect();
-    return [Math.round(((cx - r.left) / r.width) * 1000 * 10) / 10, Math.round(((cy - r.top) / r.height) * markH(it) * 10) / 10];
+  // Ask how a multi-page PDF should sit on the board.
+  async function placePdf(r, x, y) {
+    const it = addItem('pdf', x, y, { path: r.path, title: r.title, mode: 'joined', marks: {} });
+    try { const doc = await pdfDoc(r.path); if (doc.numPages > 1) askPdfLayout(it, doc.numPages); } catch {}
+    return it;
+  }
+  function askPdfLayout(it, n) {
+    const box = $('deskAsk');
+    box.innerHTML = `<p>“${escH(it.title || 'PDF')}” has ${n} pages. Put it on the board as:</p><div><button data-k="joined">One document (scroll)</button><button data-k="pages">Separate pages</button></div>`;
+    box.hidden = false;
+    box.querySelectorAll('button').forEach((b) => b.onclick = () => { box.hidden = true; const cur = byId(it.id); if (b.dataset.k === 'pages' && cur && cur.mode !== 'page') pdfToPages(cur); });
+  }
+  function pdfToPages(it) {
+    const n = it.pages || 1; if (n < 2) { toast('This PDF has one page.'); return; }
+    const marks = it.marks || {}, made = [];
+    for (let p = 2; p <= n; p++) {
+      const h = Math.round(it.w * arOf(it, p)) + PDF_BAR;
+      const pg = { id: uid(), type: 'pdf', path: it.path, title: it.title, mode: 'page', page: p, pages: n, chain: it.id, marks: { [p]: marks[p] || [] }, ars: { [p]: arOf(it, p) }, ar: arOf(it, p), w: it.w, h, x: it.x + (p - 1) * (it.w + 48), y: it.y, z: ++zTop, rot: 0 };
+      board.items.push(pg); made.push(pg);
+    }
+    // Strings tied to a passage follow it to its page.
+    board.links.forEach((l) => { if (!l.anc || l.b !== it.id) return; const m = made.find((pg) => (pg.marks[pg.page] || []).some((x) => x.id === l.anc)); if (m) l.b = m.id; });
+    Object.assign(it, { mode: 'page', page: 1, chain: it.id, marks: { 1: marks[1] || [] }, ars: { 1: arOf(it, 1) }, ar: arOf(it, 1) });
+    it.h = Math.round(it.w * it.ar) + PDF_BAR; place(it);
+    made.forEach(mount); renderPdf(it); drawLinks(); setSel([it.id]); renderSelBar(); save(); toast(`Laid out as ${n} pages`);
+  }
+  function pdfJoin(it) {
+    const root = it.chain || it.id;
+    const pages = board.items.filter((i) => i.type === 'pdf' && (i.id === root || i.chain === root)).sort((a, b) => (a.page || 1) - (b.page || 1));
+    const head = pages[0], marks = {}, ars = {};
+    pages.forEach((pg) => { Object.assign(marks, pg.marks || {}); Object.assign(ars, pg.ars || {}); });
+    const gone = new Set(pages.slice(1).map((pg) => pg.id));
+    board.links.forEach((l) => { if (gone.has(l.a)) l.a = head.id; if (gone.has(l.b)) l.b = head.id; });
+    board.links = board.links.filter((l) => l.a !== l.b);
+    board.items = board.items.filter((i) => !gone.has(i.id)); gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
+    Object.assign(head, { mode: 'joined', marks, ars, ar: ars[1] || head.ar }); delete head.chain; delete head.page;
+    head.h = Math.round(head.w * arOf(head, 1)) + PDF_BAR; place(head);
+    renderPdf(head); drawLinks(); setSel([head.id]); renderSelBar(); save(); toast('Joined into one scrolling document');
+  }
+  function markPoint(it, p, cx, cy) {
+    const r = pageEl(it, p).querySelector('.marks').getBoundingClientRect();
+    return [Math.round(((cx - r.left) / r.width) * 10000) / 10, Math.round(((cy - r.top) / r.height) * markH(it, p) * 10) / 10];
   }
   const ptsToD = (pts) => 'M' + pts.map((p) => p.join(' ')).join(' L');
   const markStyle = (k) => k.mode === 'hl' ? { c: PEN[k.color] || PEN.yellow, w: 18, hl: 1 } : { c: PEN[k.color] || PEN.red, w: 2.6 };
   const markAttrs = (k) => { const m = markStyle(k); return { stroke: m.c, 'stroke-width': m.w, fill: 'none', 'stroke-linecap': m.hl ? 'butt' : 'round', 'stroke-linejoin': 'round', 'stroke-opacity': m.hl ? 0.38 : 1 }; };
-  function renderMarks(it) {
-    const svg = els.get(it.id)?.querySelector('.marks'); if (!svg) return;
-    svg.setAttribute('viewBox', `0 0 1000 ${markH(it)}`); svg.setAttribute('preserveAspectRatio', 'none');
-    svg.innerHTML = (it.marks?.[it.page || 1] || []).map((m, i) => {
+  function renderMarks(it, p) {
+    if (p == null) { pagesOf(it).forEach((q) => renderMarks(it, q)); return; }
+    const svg = pageEl(it, p)?.querySelector('.marks'); if (!svg) return;
+    svg.setAttribute('viewBox', `0 0 1000 ${markH(it, p)}`); svg.setAttribute('preserveAspectRatio', 'none');
+    svg.classList.toggle('erasing', !!ink && ink.id === it.id && ink.mode === 'erase');
+    svg.innerHTML = (it.marks?.[p] || []).map((m, i) => {
       if (m.t === 'box') return m.r.map((r) => m.u ? `<rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 2.4}" width="${r[2]}" height="2.4" fill="${m.c}"/>` : `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="${m.c}" fill-opacity="0.4"/>`).join('');
       if (m.t === 'anc') return m.r.map((r) => `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="#C0392B" fill-opacity="0.08"/><rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 1.6}" width="${r[2]}" height="1.6" fill="#C0392B" fill-opacity="0.75"/>`).join('');
       return `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round" stroke-opacity="${m.hl ? 0.38 : 1}"/>`;
     }).join('');
   }
   function eraseAt(it, cx, cy) {
-    const svg = els.get(it.id).querySelector('.marks');
-    const hit = document.elementsFromPoint(cx, cy).find((n) => (n.tagName === 'path' || n.tagName === 'rect') && svg.contains(n));
-    if (!hit) return;
-    it.marks[it.page || 1].splice(+hit.dataset.i, 1); renderMarks(it);
+    const el = els.get(it.id);
+    const hit = document.elementsFromPoint(cx, cy).find((n) => (n.tagName === 'path' || n.tagName === 'rect') && n.closest('.marks') && el.contains(n));
+    if (!hit) return; const p = +hit.closest('.pdf-pg').dataset.p;
+    it.marks[p].splice(+hit.dataset.i, 1); renderMarks(it, p);
   }
   function setInk(k) {
     ink = k;
-    els.forEach((el, id) => { el.classList.toggle('inking', !!k && k.id === id); el.querySelector('.marks')?.classList.toggle('erasing', !!k && k.id === id && k.mode === 'erase'); });
+    els.forEach((el, id) => { el.classList.toggle('inking', !!k && k.id === id); el.querySelectorAll('.marks').forEach((m) => m.classList.toggle('erasing', !!k && k.id === id && k.mode === 'erase')); });
     $('deskHint').textContent = k ? (k.mode === 'erase' ? 'Click or drag over marks to erase. Esc when done.' : 'Draw on the page. Esc when done.') : '';
     renderSelBar();
   }
@@ -1252,7 +1330,7 @@ export function initDesk(ctx) {
     const html = `<p class="src"><i>${escH(v.channel || 'YouTube')}${auto ? ' · automatic captions' : ''}</i></p>` +
       paras.map((q) => `<p>${q.s >= 0 ? `<a class="ts" href="https://www.youtube.com/watch?v=${escH(v.vid)}&t=${Math.floor(q.s)}s" target="_blank" rel="noopener">${fmtTs(q.s)}</a> ` : ''}${escH(q.t)}</p>`).join('');
     const [w] = paperSize('letter');
-    const sh = { id: uid(), type: 'sheet', paper: 'custom', w, h: Math.round(3.25 * IN), x: v.x + v.w + 96, y: v.y, z: ++zTop, rot: 0, title: `Transcript: ${title || 'YouTube video'}`, html, collapsible: true, collapsed: true };
+    const sh = { id: uid(), type: 'sheet', paper: 'custom', w, h: Math.round(3.25 * IN), x: v.x + v.w + 96, y: v.y, z: ++zTop, rot: 0, title: `Transcript: ${title || 'YouTube video'}`, html, collapsible: true, collapsed: true, readonly: true };
     board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: v.id, b: sh.id });
     drawLinks(); setSel([sh.id]); save(); toast('Transcript added. Use “Show full transcript” at the bottom to open it.');
   }
@@ -1292,7 +1370,7 @@ export function initDesk(ctx) {
     const head = `<p class="src"><i>${escH(d.site || it.site || '')}${d.author ? ' · ' + escH(d.author) : ''}</i></p>`;
     const html = head + blocks.map((b) => b.t === 'h' ? `<h3>${escH(b.text)}</h3>` : b.t === 'q' ? `<blockquote>${escH(b.text)}</blockquote>` : `<p>${escH(b.text)}</p>`).join('');
     const [w, h] = paperSize('letter');
-    const sh = { id: uid(), type: 'sheet', paper: 'letter', w, h, x: it.x + it.w + 96, y: it.y, z: ++zTop, rot: 0, title: d.title || it.title || '', html };
+    const sh = { id: uid(), type: 'sheet', paper: 'letter', w, h, x: it.x + it.w + 96, y: it.y, z: ++zTop, rot: 0, title: d.title || it.title || '', html, readonly: true };
     board.items.push(sh); mount(sh); board.links.push({ id: uid(), a: it.id, b: sh.id });
     setSel([sh.id]); splitSheet(sh);
   }
@@ -1416,6 +1494,7 @@ export function initDesk(ctx) {
     board = data; els.clear(); world.querySelectorAll('.it').forEach((n) => n.remove());
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
+    board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
     board.links.forEach((l) => { if (l.anc) { const n = board.items.find((i) => i.id === l.a); if (n) n.rot = 0; } }); // tied notes sit square
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
