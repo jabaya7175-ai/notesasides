@@ -193,7 +193,12 @@ export function initFigures(root = document) {
     lb.innerHTML = '<button class="lb-x" aria-label="Close">×</button><button class="lb-p" aria-label="Previous image">‹</button><figure><img alt=""><figcaption></figcaption></figure><button class="lb-n" aria-label="Next image">›</button><div class="lb-count"></div>';
     document.body.appendChild(lb);
     let at = 0;
-    const cap = (im) => im.closest('figure')?.querySelector(':scope > figcaption, .ex-panel figcaption')?.textContent || im.alt || '';
+    const cap = (im) => {
+      const fc = im.closest('figure')?.querySelector(':scope > figcaption');
+      if (!fc) return im.alt || '';
+      const b = fc.querySelector('b');
+      return b ? `${b.textContent}. ${fc.textContent.slice(b.textContent.length).trim()}` : fc.textContent;
+    };
     const open = (i) => {
       at = (i + imgs.length) % imgs.length; const im = imgs[at];
       lb.querySelector('img').src = im.currentSrc || im.src; lb.querySelector('img').alt = im.alt;
