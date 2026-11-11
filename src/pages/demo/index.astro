@@ -1,19 +1,13 @@
 ---
 import Site from '../../layouts/Site.astro';
-import Subscribe from '../../components/Subscribe.astro';
-import { postListHTML } from '../../lib/render.js';
+import SubscribeBand from '../../components/SubscribeBand.astro';
+import { magazineHTML, mastheadHTML } from '../../lib/render.js';
 import { demoListRows } from '../../lib/demo.js';
-import { TAGLINE } from '../../lib/config.js';
 const base = import.meta.env.BASE_URL;
 ---
-<Site title="Demo">
+<Site title="Demo" bare>
   <div class="demo-banner">Demo: sample essays to show the design. <a href={base}>Back to the real site</a></div>
-  <div class="home wide">
-    <section class="masthead">
-      <h1>Notes &amp; Asides.</h1>
-      <p>{TAGLINE}</p>
-      <Subscribe />
-    </section>
-    <Fragment set:html={postListHTML(demoListRows(), base, { lead: true, prefix: 'demo/p/' })} />
-  </div>
+  <Fragment set:html={mastheadHTML(base, ['Architecture', 'Theology', 'Books', 'Culture'], { archive: 'demo/archive/' })} />
+  <div class="mag"><Fragment set:html={magazineHTML(demoListRows(), base, { prefix: 'demo/p/' })} /></div>
+  <SubscribeBand />
 </Site>

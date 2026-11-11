@@ -51,11 +51,11 @@ button,input,select{font-family:var(--serif)}
 /* ---------- The sheet: same grid & type as the site ---------- */
 [contenteditable]{outline:none}
 [data-ph]:empty::before{content:attr(data-ph);color:var(--ph);pointer-events:none}
-.sheet .edgrid{display:grid;grid-template-columns:minmax(0,1fr) 9.5rem minmax(0,40rem) 15rem minmax(0,1fr);column-gap:3rem;padding:56px 24px 160px}
+.sheet .edgrid{display:grid;grid-template-columns:minmax(0,1fr) 15rem minmax(0,40rem) 15rem minmax(0,1fr);column-gap:3rem;padding:56px 24px 160px}
 .sheet .edart{grid-column:3;position:relative;min-width:0;font-size:var(--fs);line-height:var(--lh);font-variant-numeric:oldstyle-nums proportional-nums}
 .sheet .edmargin{grid-column:4;position:relative}
-.sheet:not(.review) .edgrid{grid-template-columns:minmax(0,1fr) minmax(0,40rem) 15rem minmax(0,1fr)}
-.sheet:not(.review) .edart{grid-column:2} .sheet:not(.review) .edmargin{grid-column:3}
+
+
 .sheet .kicker{color:var(--red);margin:0 0 16px;text-transform:uppercase;letter-spacing:.2em;font-weight:600;font-size:13px;line-height:1.4}
 .doc-title{font-weight:700;font-size:50px;line-height:1.04;margin:0 0 14px;letter-spacing:-.012em;font-variant-numeric:lining-nums}
 .doc-sub{font-style:italic;font-size:24px;color:var(--ink-soft);margin:0 0 22px;line-height:1.35}
@@ -123,8 +123,8 @@ sup.fn:hover,sup.fn.active{background:var(--red);color:var(--paper)}
 .sheet .edrail .addbk{all:unset;cursor:pointer;font-size:14px;color:var(--muted);border:1px dashed var(--rule);border-radius:4px;padding:8px 10px;display:block;text-align:center}
 .sheet .edrail .addbk:hover{color:var(--ink);border-color:var(--ink-soft)}
 
-@media (max-width:1260px){
-  .sheet .edgrid, .sheet:not(.review) .edgrid{grid-template-columns:minmax(0,1fr) minmax(0,40rem) 15rem minmax(0,1fr)}
+@media (max-width:1340px){
+  .sheet .edgrid{grid-template-columns:minmax(0,1fr) minmax(0,40rem) 15rem minmax(0,1fr)}
   .sheet .edart, .sheet.review .edart{grid-column:2} .sheet .edmargin, .sheet.review .edmargin{grid-column:3}
   .sheet .edrail{position:static;width:auto;text-align:left;margin:0 0 30px;padding:0 0 22px;border-bottom:1px solid var(--rule)}
   .sheet .edrail .bk{display:grid;grid-template-columns:64px 1fr;column-gap:16px;align-items:center;margin:0 0 10px}

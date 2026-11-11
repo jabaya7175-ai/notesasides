@@ -62,7 +62,7 @@ export function initReader(root = document) {
   function placeRail() {
     const by = article.querySelector('.lead-cover') || article.querySelector('.byline');
     if (!by) return;
-    article.style.setProperty('--rail-top', matchMedia('(max-width:1260px)').matches ? '0px' : by.getBoundingClientRect().bottom - article.getBoundingClientRect().top + 34 + 'px');
+    article.style.setProperty('--rail-top', matchMedia('(max-width:1340px)').matches ? '0px' : by.getBoundingClientRect().bottom - article.getBoundingClientRect().top + 34 + 'px');
   }
   function layoutNotes() {
     if (narrow()) return;
@@ -103,10 +103,114 @@ export function initReader(root = document) {
   };
   document.addEventListener('keydown', onKey);
   addEventListener('resize', onResize);
+  const disposeFigures = initFigures(root);
   relayout();
   if (document.fonts) {
     document.fonts.ready.then(relayout);
     [400, 600, 800].forEach((w) => document.fonts.load(`${w} 20px "EB Garamond"`).then(relayout).catch(() => {}));
   }
-  return () => { document.removeEventListener('keydown', onKey); removeEventListener('resize', onResize); };
+  return () => { document.removeEventListener('keydown', onKey); removeEventListener('resize', onResize); disposeFigures(); };
+}
+
+/* ===================================================================
+   Image features inside an article body. Each works without JavaScript
+   (everything simply shows in order); these add the interaction.
+   =================================================================== */
+export function initFigures(root = document) {
+  const body = root.querySelector('article.post .body');
+  if (!body) return () => {};
+  const cleanups = [];
+
+  // Full-bleed images: span the whole window regardless of the column.
+  const bleeds = [...body.querySelectorAll('figure.bleed')];
+  const fitBleeds = () => bleeds.forEach((f) => {
+    f.style.marginLeft = '0px'; f.style.width = '';
+    const left = f.getBoundingClientRect().left, vw = document.documentElement.clientWidth;
+    f.style.marginLeft = -left + 'px'; f.style.width = vw + 'px';
+  });
+  if (bleeds.length) { fitBleeds(); addEventListener('resize', fitBleeds); cleanups.push(() => removeEventListener('resize', fitBleeds)); }
+
+  // Hotspots: numbered dots on an image tied to a legend.
+  body.querySelectorAll('figure.hotspots').forEach((fig) => {
+    const dots = [...fig.querySelectorAll('.hs')], items = [...fig.querySelectorAll('.hs-notes li')];
+    const tip = document.createElement('div'); tip.className = 'hs-tip'; tip.setAttribute('role', 'status'); fig.querySelector('.hs-img').appendChild(tip);
+    const select = (i) => {
+      dots.forEach((d, j) => d.classList.toggle('on', j === i)); items.forEach((li, j) => li.classList.toggle('on', j === i));
+      if (i < 0) { tip.classList.remove('show'); return; }
+      const d = dots[i]; tip.innerHTML = `<b>${i + 1}</b> ${items[i]?.innerHTML || ''}`;
+      tip.style.left = d.style.left; tip.style.top = d.style.top;
+      tip.classList.toggle('below', parseFloat(d.style.top) < 30); tip.classList.toggle('flip', parseFloat(d.style.left) > 60);
+      tip.classList.add('show');
+    };
+    let cur = -1;
+    dots.forEach((d, i) => d.addEventListener('click', (e) => { e.stopPropagation(); cur = cur === i ? -1 : i; select(cur); }));
+    items.forEach((li, i) => li.addEventListener('click', () => { cur = cur === i ? -1 : i; select(cur); }));
+    fig.querySelector('.hs-img img').addEventListener('click', (e) => { if (cur >= 0) { e.preventDefault(); cur = -1; select(-1); } }, true);
+  });
+
+  // Style explorer: tabs over panels.
+  body.querySelectorAll('.explorer').forEach((ex) => {
+    const panels = [...ex.querySelectorAll('.ex-panel')];
+    const tabs = document.createElement('div'); tabs.className = 'ex-tabs'; tabs.setAttribute('role', 'tablist');
+    panels.forEach((p, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'tab');
+      b.innerHTML = `<span class="yr">${p.dataset.years || ''}</span>${p.dataset.label}`;
+      b.onclick = () => show(i); tabs.appendChild(b);
+    });
+    ex.prepend(tabs); ex.classList.add('js');
+    const prev = document.createElement('button'), next = document.createElement('button');
+    prev.className = 'ex-nav prev'; next.className = 'ex-nav next'; prev.type = next.type = 'button';
+    prev.setAttribute('aria-label', 'Previous style'); next.setAttribute('aria-label', 'Next style'); prev.textContent = '‹'; next.textContent = '›';
+    ex.querySelector('.ex-stage').append(prev, next);
+    let at = 0;
+    function show(i) {
+      at = (i + panels.length) % panels.length;
+      panels.forEach((p, j) => p.classList.toggle('on', j === at));
+      [...tabs.children].forEach((b, j) => { b.classList.toggle('on', j === at); b.setAttribute('aria-selected', String(j === at)); });
+    }
+    prev.onclick = () => show(at - 1); next.onclick = () => show(at + 1);
+    show(0);
+  });
+
+  // Quiz: pick a style for each picture.
+  body.querySelectorAll('.quiz').forEach((qz) => {
+    const qs = [...qz.querySelectorAll('.q')]; let right = 0, done = 0;
+    const score = document.createElement('p'); score.className = 'q-score'; qz.appendChild(score);
+    qs.forEach((q) => q.querySelectorAll('.opts button').forEach((b) => b.addEventListener('click', () => {
+      if (q.classList.contains('answered')) return;
+      q.classList.add('answered'); done++;
+      const ok = b.dataset.v === q.dataset.answer; if (ok) right++;
+      b.classList.add(ok ? 'right' : 'wrong');
+      q.querySelector(`.opts button[data-v="${q.dataset.answer}"]`)?.classList.add('right');
+      if (done === qs.length) score.textContent = `You named ${right} of ${qs.length}. ${right === qs.length ? 'A trained eye.' : right ? 'Not bad at all.' : 'Now you know where to look.'}`;
+    })));
+  });
+
+  // Lightbox: click any picture to see it large, with its caption.
+  const imgs = [...body.querySelectorAll('figure img')].filter((im) => !im.closest('.quiz'));
+  if (imgs.length) {
+    const lb = document.createElement('div'); lb.className = 'lightbox'; lb.setAttribute('role', 'dialog'); lb.setAttribute('aria-modal', 'true'); lb.setAttribute('aria-label', 'Image viewer');
+    lb.innerHTML = '<button class="lb-x" aria-label="Close">×</button><button class="lb-p" aria-label="Previous image">‹</button><figure><img alt=""><figcaption></figcaption></figure><button class="lb-n" aria-label="Next image">›</button><div class="lb-count"></div>';
+    document.body.appendChild(lb);
+    let at = 0;
+    const cap = (im) => im.closest('figure')?.querySelector(':scope > figcaption, .ex-panel figcaption')?.textContent || im.alt || '';
+    const open = (i) => {
+      at = (i + imgs.length) % imgs.length; const im = imgs[at];
+      lb.querySelector('img').src = im.currentSrc || im.src; lb.querySelector('img').alt = im.alt;
+      lb.querySelector('figcaption').textContent = cap(im); lb.querySelector('.lb-count').textContent = `${at + 1} / ${imgs.length}`;
+      lb.classList.add('open'); document.documentElement.style.overflow = 'hidden'; lb.querySelector('.lb-x').focus();
+    };
+    const close = () => { lb.classList.remove('open'); document.documentElement.style.overflow = ''; imgs[at]?.focus?.(); };
+    imgs.forEach((im, i) => {
+      im.classList.add('zoomable'); im.tabIndex = 0; im.setAttribute('role', 'button'); im.setAttribute('aria-label', `Enlarge: ${im.alt || 'image'}`);
+      im.addEventListener('click', (e) => { if (e.defaultPrevented) return; open(i); });
+      im.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(i); } });
+    });
+    lb.querySelector('.lb-x').onclick = close; lb.querySelector('.lb-p').onclick = () => open(at - 1); lb.querySelector('.lb-n').onclick = () => open(at + 1);
+    lb.addEventListener('click', (e) => { if (e.target === lb) close(); });
+    const key = (e) => { if (!lb.classList.contains('open')) return; if (e.key === 'Escape') close(); if (e.key === 'ArrowLeft') open(at - 1); if (e.key === 'ArrowRight') open(at + 1); };
+    document.addEventListener('keydown', key);
+    cleanups.push(() => { document.removeEventListener('keydown', key); lb.remove(); });
+  }
+  return () => cleanups.forEach((f) => f());
 }

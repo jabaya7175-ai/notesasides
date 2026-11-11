@@ -1,0 +1,26 @@
+---
+import Site from '../../../layouts/Site.astro';
+import { postListHTML } from '../../../lib/render.js';
+import { demoListRows } from '../../../lib/demo.js';
+const base = import.meta.env.BASE_URL;
+const rows = demoListRows();
+---
+<Site title="Demo archive" current="archive">
+  <div class="demo-banner">Demo archive. <a href={`${base}demo/`}>Demo home</a></div>
+  <div class="home wide">
+    <h1 style="margin-bottom:36px" id="ah">Archive</h1>
+    <div id="posts"><Fragment set:html={postListHTML(rows, base, { prefix: 'demo/p/' })} /></div>
+  </div>
+  <script define:vars={{ rows, base }}>
+    window.__demoRows = rows; window.__base = base;
+  </script>
+  <script>
+    import { postListHTML } from '../../../lib/render.js';
+    const s = new URLSearchParams(location.search).get('s');
+    if (s) {
+      const rows = window.__demoRows.filter((p) => p.section === s || (s === 'Reviews' && p.kind === 'review'));
+      document.getElementById('ah').textContent = s;
+      document.getElementById('posts').innerHTML = postListHTML(rows, window.__base, { prefix: 'demo/p/' });
+    }
+  </script>
+</Site>

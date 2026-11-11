@@ -6,12 +6,15 @@ const posts = await listPosts();
 ---
 <Site title="Archive" current="archive">
   <div class="home wide">
-    <h1 style="margin-bottom:36px">Archive</h1>
+    <h1 style="margin-bottom:36px" id="ah">Archive</h1>
     <div id="posts"><Fragment set:html={postListHTML(posts, import.meta.env.BASE_URL)} /></div>
   </div>
   <script>
     import { listPosts } from '../lib/data.js';
     import { postListHTML } from '../lib/render.js';
-    listPosts().then((posts) => { if (posts.length) document.getElementById('posts').innerHTML = postListHTML(posts, import.meta.env.BASE_URL); }).catch(() => {});
+    const s = new URLSearchParams(location.search).get('s');
+    const pick = (p) => !s || (s === 'Essays' ? p.kind !== 'review' : s === 'Reviews' ? p.kind === 'review' : p.section === s);
+    if (s) document.getElementById('ah').textContent = s;
+    listPosts().then((posts) => { document.getElementById('posts').innerHTML = postListHTML(posts.filter(pick), import.meta.env.BASE_URL); }).catch(() => {});
   </script>
 </Site>

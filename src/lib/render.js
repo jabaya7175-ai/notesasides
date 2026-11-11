@@ -58,7 +58,7 @@ export function renderArticle(post, books = []) {
   const end = notes.length ? `<section class="endnotes"><h3>Notes</h3><ol>${notes.map((n) => `<li>${n.body}</li>`).join('')}</ol></section>` : '';
   return `<div class="layout${review ? ' review' : ''}">
   <article class="${cls}" data-dc-lines="${+dc.lines || 3}" data-dc-weight="${+dc.weight || 400}" data-dc-frame="${esc(dc.frame || '')}" data-dc-color="${esc(dc.color || 'var(--ink)')}">
-    <p class="kicker caps">${post.kind === 'review' ? 'Review' : 'Essay'}</p>
+    <p class="kicker caps">${esc(kickerOf(post))}</p>
     <h1>${esc(post.title || 'Untitled')}</h1>
     ${post.subtitle ? `<p class="dek">${esc(post.subtitle)}</p>` : ''}
     <div class="byline"><span class="by">${esc(AUTHOR)}</span> · ${esc(date)} · ${readingMinutes(post.body_html)} min read</div>
@@ -81,7 +81,7 @@ export function postListHTML(posts, base, { lead = false, prefix = 'p/' } = {}) 
   if (!posts.length) return '<p class="empty">The first essay is on its way.</p>';
   const meta = (p) => {
     const books = (p.post_books || []).sort((a, b) => a.position - b.position).map((x) => x.books?.title).filter(Boolean);
-    return `<div class="meta">${p.kind === 'review' ? 'Review' : 'Essay'}${books.length ? `<span class="d"> · <i class="bt">${books.map(esc).join(', ')}</i></span>` : ''} <span class="d">· ${esc(formatDate(p.published_at))}</span></div>`;
+    return `<div class="meta">${esc(kickerOf(p))}${books.length ? `<span class="d"> · <i class="bt">${books.map(esc).join(', ')}</i></span>` : ''} <span class="d">· ${esc(formatDate(p.published_at))}</span></div>`;
   };
   const href = (p) => `${base}${prefix}${encodeURIComponent(p.slug)}/`;
   let out = '';
@@ -95,4 +95,48 @@ export function postListHTML(posts, base, { lead = false, prefix = 'p/' } = {}) 
     out += '<ul class="postlist">' + rest.map((p) => `<li class="${p.cover_url ? 'has-thumb' : ''}"><div class="pt">${meta(p)}<h2><a href="${href(p)}">${esc(p.title)}</a></h2>${p.subtitle ? `<p>${esc(p.subtitle)}</p>` : ''}</div>${p.cover_url ? `<a class="thumb" href="${href(p)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.cover_url)}" alt="" loading="lazy"></a>` : ''}</li>`).join('') + '</ul>';
   }
   return out;
+}
+
+export const kickerOf = (p) => p.kind === 'review' ? 'Review' : (p.section || 'Essay');
+const booksOf = (p) => (p.post_books || p.books?.map((b, i) => ({ position: i, books: b })) || [])
+  .slice().sort((a, b) => a.position - b.position).map((x) => x.books).filter(Boolean);
+
+/**
+ * Magazine front page: masthead-led lead story with a "latest" column, a grid of
+ * recent pieces, a reviews band with book covers, and an archive list.
+ */
+export function magazineHTML(posts, base, { prefix = 'p/' } = {}) {
+  if (!posts.length) return '<p class="empty" style="padding:60px 0">The first essay is on its way.</p>';
+  const href = (p) => `${base}${prefix}${encodeURIComponent(p.slug)}/`;
+  const by = (p) => `<p class="by">${esc(AUTHOR)} · ${esc(formatDate(p.published_at))}</p>`;
+  const kick = (p) => `<p class="mk">${esc(kickerOf(p))}</p>`;
+  const pic = (p, cls = '') => p.cover_url ? `<a class="pic ${cls}" href="${href(p)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.cover_url)}" alt="" loading="lazy"></a>` : '';
+  const [lead, ...rest] = posts;
+  const side = rest.slice(0, 3);
+  const used = new Set([lead, ...side]);
+  const reviews = posts.filter((p) => p.kind === 'review' && booksOf(p).length);
+  const grid = rest.slice(3).filter((p) => p.kind !== 'review').slice(0, 6);
+  grid.forEach((p) => used.add(p));
+  const archive = posts.filter((p) => !used.has(p) && p.kind !== 'review');
+
+  let h = `<section class="mag-top">
+    <article class="mag-lead">${pic(lead, 'r32')}${kick(lead)}<h2><a href="${href(lead)}">${esc(lead.title)}</a></h2>${lead.subtitle ? `<p class="dek">${esc(lead.subtitle)}</p>` : ''}${by(lead)}</article>
+    <aside class="mag-side"><h3 class="mag-h">Latest</h3>${side.map((p, i) => `<article class="mag-s">${i === 0 ? pic(p, 'r32') : ''}${kick(p)}<h4><a href="${href(p)}">${esc(p.title)}</a></h4>${i === 0 && p.subtitle ? `<p class="dek">${esc(p.subtitle)}</p>` : ''}${by(p)}</article>`).join('')}</aside>
+  </section>`;
+  if (grid.length) h += `<section class="mag-sec"><h3 class="mag-h">Essays</h3><div class="mag-grid">${grid.map((p) => `<article class="mag-card">${pic(p, 'r32')}${kick(p)}<h4><a href="${href(p)}">${esc(p.title)}</a></h4>${p.subtitle ? `<p class="dek">${esc(p.subtitle)}</p>` : ''}${by(p)}</article>`).join('')}</div></section>`;
+  if (reviews.length) h += `<section class="mag-reviews"><div class="mag-in"><h3 class="mag-h">Books Reviewed</h3><div class="mag-books">${reviews.slice(0, 4).map((p) => {
+    const b = booksOf(p)[0];
+    const cover = b.cover_path ? `<img src="${esc(b.cover_path)}" alt="">` : `<div class="gencover"><span class="a">${esc(b.author)}</span><span class="t">${esc(b.title)}</span><span class="orn"></span></div>`;
+    return `<article class="mag-book"><a class="bc" href="${href(p)}" tabindex="-1" aria-hidden="true">${cover}</a><div><p class="bt"><i>${esc(b.title)}</i>${b.author ? `<br><span>${esc(b.author)}</span>` : ''}</p><h4><a href="${href(p)}">${esc(p.title)}</a></h4>${by(p)}</div></article>`;
+  }).join('')}</div></div></section>`;
+  if (archive.length) h += `<section class="mag-sec"><h3 class="mag-h">From the Archive</h3><ul class="mag-arch">${archive.slice(0, 8).map((p) => `<li><span class="mk">${esc(kickerOf(p))}</span><a href="${href(p)}">${esc(p.title)}</a><span class="d">${esc(formatDate(p.published_at))}</span></li>`).join('')}</ul></section>`;
+  return h;
+}
+
+export function mastheadHTML(base, sections = [], { archive = 'archive/' } = {}) {
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
+  return `<header class="mast"><div class="mast-strip"><span>${esc(today)}</span><span>Est. 2026</span></div>
+  <h1 class="mast-name"><a href="${base}">Notes &amp; Asides.</a></h1>
+  <p class="mast-tag">A blog of conservative thought and Reformed musings.</p>
+  <nav class="mast-nav">${sections.map((s) => `<a href="${base}${archive}?s=${encodeURIComponent(s)}">${esc(s)}</a>`).join('')}<a href="${base}${archive}">Archive</a><a href="${base}about/">About</a><a href="#subscribe" class="sub">Subscribe</a></nav></header>`;
 }

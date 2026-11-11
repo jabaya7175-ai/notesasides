@@ -138,6 +138,7 @@ const base = import.meta.env.BASE_URL;
   <section>
     <h5>Article</h5>
     <div class="field">Type<div class="seg" id="kindSeg"><button data-v="essay">Essay</button><button data-v="review">Book review</button></div></div>
+    <div class="field">Section<input type="text" id="section" list="sectionList" placeholder="e.g. Architecture"><datalist id="sectionList"><option>Architecture</option><option>Theology</option><option>Culture</option><option>Books</option><option>Politics</option></datalist></div>
     <div id="booksBox"><div id="booksList"></div><button class="btn" id="addBook2">+ Add book</button></div>
     <div class="field" style="margin-top:12px">Cover image<div id="coverField"></div></div>
     <div class="field">Cover caption or credit<input type="text" id="coverCaption" placeholder="e.g. The Geographer, Johannes Vermeer, 1669"></div>

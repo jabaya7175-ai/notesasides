@@ -90,7 +90,7 @@ let lastVersionAt = 0;
 
 function settingsFrom(p) {
   const dc = { ...DEFAULT_DROP_CAP, ...(p.drop_cap || {}) };
-  return { coverUrl: p.cover_url || '', coverCaption: p.cover_caption || '', kind: p.kind, para: p.paragraph_style, align: p.align, dcOn: !!dc.on, dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
+  return { section: p.section || '', coverUrl: p.cover_url || '', coverCaption: p.cover_caption || '', kind: p.kind, para: p.paragraph_style, align: p.align, dcOn: !!dc.on, dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
 }
 function makeNote(id, html) { const li = document.createElement('li'); li.dataset.id = id; li.contentEditable = 'true'; li.innerHTML = html || ''; return li; }
 
@@ -120,7 +120,7 @@ function collect() {
     kind: S.kind, paragraph_style: S.para, align: S.align, send_email: S.sendEmail,
     drop_cap: { on: S.dcOn, lines: S.dcLines, weight: S.dcWeight, color: S.dcColor, frame: S.dcFrame },
     slug: S.slug ? slugify(S.slug) : cur.post.slug,
-    cover_url: S.coverUrl || null, cover_caption: S.coverCaption || null,
+    section: S.section || null, cover_url: S.coverUrl || null, cover_caption: S.coverCaption || null,
   };
 }
 let saveTimer = null, saving = Promise.resolve();
@@ -246,6 +246,7 @@ function wireEditor() {
   seg('dcOnSeg', 'dcOn', (v) => v === 'on'); seg('dcLinesSeg', 'dcLines', Number); seg('dcFrameSeg', 'dcFrame'); seg('dcWeightSeg', 'dcWeight', Number);
   $('dcColor').querySelectorAll('button').forEach((b) => b.onclick = () => { S.dcColor = b.dataset.v; applySettings(); save(); if (previewing) renderPreview(); });
   $('slug').oninput = (e) => { S.slug = e.target.value; save(); };
+  $('section').oninput = (e) => { S.section = e.target.value.trim(); applyKicker(); save(); };
   $('coverCaption').oninput = (e) => { S.coverCaption = e.target.value; renderCover(); save(); };
   $('coverInput').onchange = async () => {
     const f = $('coverInput').files[0]; $('coverInput').value = ''; if (!f) return;
@@ -344,7 +345,7 @@ function dropcap() {
 }
 function placeRail() {
   const sheet = $('sheet');
-  if (matchMedia('(max-width:1260px)').matches) { sheet.style.setProperty('--rail-top', '0px'); return; }
+  if (matchMedia('(max-width:1340px)').matches) { sheet.style.setProperty('--rail-top', '0px'); return; }
   const anchor = S.coverUrl ? $('edCover') : $('byline');
   sheet.style.setProperty('--rail-top', anchor.getBoundingClientRect().bottom - $('art').getBoundingClientRect().top + 34 + 'px');
 }
@@ -426,10 +427,11 @@ function renderCover() {
   $('cfRemove')?.addEventListener('click', () => { S.coverUrl = ''; renderCover(); save(); });
   relayout();
 }
+function applyKicker() { $('kicker').textContent = S.kind === 'review' ? 'Review' : (S.section || 'Essay'); }
 function applySettings() {
   const sheet = $('sheet');
   sheet.classList.toggle('review', S.kind === 'review'); sheet.classList.toggle('book', S.para === 'book'); sheet.classList.toggle('justify', S.align === 'justify');
-  $('kicker').textContent = S.kind === 'review' ? 'Review' : 'Essay';
+  applyKicker(); $('section').value = S.section || '';
   const on = (id, val) => $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === String(val)));
   on('kindSeg', S.kind); on('paraSeg', S.para); on('alignSeg', S.align); on('dcOnSeg', S.dcOn ? 'on' : 'off');
   on('dcLinesSeg', S.dcLines); on('dcFrameSeg', S.dcFrame); on('dcWeightSeg', S.dcWeight); on('dcColor', S.dcColor);

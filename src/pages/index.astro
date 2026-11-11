@@ -1,27 +1,20 @@
 ---
 import Site from '../layouts/Site.astro';
-import Subscribe from '../components/Subscribe.astro';
+import SubscribeBand from '../components/SubscribeBand.astro';
 import { listPosts } from '../lib/data.js';
-import { postListHTML } from '../lib/render.js';
-import { TAGLINE } from '../lib/config.js';
+import { magazineHTML, mastheadHTML } from '../lib/render.js';
 const posts = await listPosts();
 const base = import.meta.env.BASE_URL;
+const SECTIONS = ['Essays', 'Reviews', 'Architecture', 'Theology'];
 ---
-<Site>
-  <div class="home wide">
-    <section class="masthead">
-      <h1>Notes &amp; Asides.</h1>
-      <p>{TAGLINE}</p>
-      <div id="subscribe"><Subscribe /></div>
-    </section>
-    <div id="posts"><Fragment set:html={postListHTML(posts.slice(0, 20), base, { lead: true })} /></div>
-  </div>
+<Site bare>
+  <Fragment set:html={mastheadHTML(base, SECTIONS)} />
+  <div class="mag" id="mag"><Fragment set:html={magazineHTML(posts, base)} /></div>
+  <SubscribeBand />
   <script>
-    // New posts appear before the next site build: refresh the list from the database.
+    // Posts published since the last build appear right away.
     import { listPosts } from '../lib/data.js';
-    import { postListHTML } from '../lib/render.js';
-    listPosts().then((posts) => {
-      if (posts.length) document.getElementById('posts').innerHTML = postListHTML(posts.slice(0, 20), import.meta.env.BASE_URL, { lead: true });
-    }).catch(() => {});
+    import { magazineHTML } from '../lib/render.js';
+    listPosts().then((posts) => { if (posts.length) document.getElementById('mag').innerHTML = magazineHTML(posts, import.meta.env.BASE_URL); }).catch(() => {});
   </script>
 </Site>
