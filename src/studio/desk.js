@@ -609,7 +609,7 @@ export function initDesk(ctx) {
     const sp = world.querySelector(`.anc[data-anc="${id}"]`); if (!sp) return;
     const r = sp.getClientRects()[0], at = toWorld(r.right, r.top);
     const [nw, nh] = SIZES.note;
-    const note = addItem('note', host.x + host.w + 72 + nw / 2, at.y - 24 + nh / 2, { color: 'yellow' });
+    const note = addItem('note', host.x + host.w + 72 + nw / 2, at.y - 24 + nh / 2, { color: 'yellow', rot: 0 });
     board.links.push({ id: uid(), a: note.id, b: host.id, anc: id });
     drawLinks(); save();
     els.get(note.id).querySelector('.nt-body').focus({ preventScroll: true });
