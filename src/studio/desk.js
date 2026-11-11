@@ -1001,10 +1001,8 @@ export function initDesk(ctx) {
     const sc = e.target.closest('.page, .nt-body, .q-body, .pdf-scroll'), host = e.target.closest('.it');
     if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel'))) return; // scroll the selected piece's text
     e.preventDefault();
-    // Photoshop: wheel scrolls up/down, Shift+wheel sideways, Alt or Ctrl+wheel (and pinch) zooms at the cursor.
-    if (e.ctrlKey || e.metaKey || e.altKey) zoomAt(view().z * Math.exp(-(e.deltaY || e.deltaX) * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
-    else if (e.shiftKey && !e.deltaX) { view().x -= e.deltaY; touchView(); saveView(); }
-    else { view().x -= e.deltaX; view().y -= e.deltaY; touchView(); saveView(); }
+    // The wheel zooms at the cursor; hold Space and drag to pan.
+    zoomAt(view().z * Math.exp(-(e.deltaY || e.deltaX) * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
   }, { passive: false });
   addEventListener('resize', () => { if (board) applyView(); });
   document.addEventListener('keydown', (e) => {
