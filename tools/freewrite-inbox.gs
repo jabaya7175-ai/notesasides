@@ -1,7 +1,7 @@
 /**
  * Notes & Asides — Freewrite email inbox
  *
- * Runs inside the Gmail account that receives your drafts. Every 5 minutes it
+ * Runs inside the Gmail account that receives your drafts. Every minute it
  * picks up unread mail, sends each draft to the Studio (Freewrite library +
  * a draft post), marks it read and labels it "Imported".
  *
@@ -17,7 +17,7 @@ const ALLOWED_SENDERS = [];
 
 function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('checkInbox').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('checkInbox').timeBased().everyMinutes(1).create();
   checkInbox();
 }
 
