@@ -935,8 +935,10 @@ export function initDesk(ctx) {
   }
   let drag = null, eatMouse = false;
   vp.addEventListener('mousedown', (e) => { if (eatMouse) { e.preventDefault(); eatMouse = false; } }, true);
+  let activeLocked = null; // the locked piece last clicked (its pages scroll with the wheel)
   vp.addEventListener('pointerdown', (e) => {
     eatMouse = false; $('deskAsk').hidden = true;
+    const hitLocked = e.target.closest?.('.it.locked'); activeLocked = hitLocked ? hitLocked.dataset.id : null;
     if (e.button === 1) { e.preventDefault(); startPan(e); return; }
     if (e.button !== 0) return;
     const pinEl = e.target.closest('.pin[data-end]');
@@ -1227,7 +1229,7 @@ export function initDesk(ctx) {
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
     const sc = e.target.closest('.page, .nt-body, .q-body, .pdf-scroll'), host = e.target.closest('.it');
-    if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel') || host.classList.contains('locked'))) return; // scroll the selected (or locked) piece's text
+    if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel') || host.dataset.id === activeLocked)) return; // scroll a piece you've clicked
     e.preventDefault();
     // The wheel zooms at the cursor; hold Space and drag to pan.
     zoomAt(view().z * Math.exp(-(e.deltaY || e.deltaX) * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
