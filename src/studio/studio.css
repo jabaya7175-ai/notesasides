@@ -330,7 +330,7 @@ body.previewing #preview{display:block}
 .it.sheet .grip{position:absolute;left:0;right:0;top:0;height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 24px;opacity:0;transition:opacity .15s}
 .it.sheet:hover .grip,.it.sheet.sel .grip{opacity:1}
 .it .sz{font-size:13px;letter-spacing:.08em;color:#8A7F6A;font-variant-numeric:lining-nums}
-.it.sheet .page{position:absolute;inset:0;padding:72px 96px 72px;display:flex;flex-direction:column;background-image:linear-gradient(90deg,transparent 78px,rgba(179,51,43,.28) 78px,rgba(179,51,43,.28) 79.5px,transparent 79.5px)}
+.it.sheet .page{position:absolute;inset:0;padding:72px 96px 72px;display:flex;flex-direction:column}
 .sh-title{all:unset;flex:none;font-family:var(--serif);font-weight:700;font-size:24px;line-height:1.25;color:#1E2836;margin-bottom:14px;border-bottom:1px solid transparent}
 .sheet.editing .sh-title:focus{border-bottom-color:rgba(0,0,0,.12)}
 .sh-body{flex:1;overflow:auto;font-size:16px;line-height:1.5;scrollbar-width:thin}
@@ -355,6 +355,8 @@ body.previewing #preview{display:block}
 .pc-t{margin:4px 0 0;font-size:27px;font-weight:700;line-height:1.15}
 .pc-s{margin:6px 0 0;font-size:18px;font-style:italic;color:var(--ink-soft);line-height:1.3}
 .it.post .mini{margin:auto 0 0;align-self:flex-start;color:var(--ink-soft)} .it.post .mini:hover{color:var(--ink);background:rgba(255,255,255,.08)}
+/* Shift-drag selection box */
+.desk-marquee{position:absolute;border:1.5px solid #E9C46A;background:rgba(233,196,106,.1);pointer-events:none;z-index:4}
 /* Library drag ghost */
 .lib-it{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .lib-it.lifted{opacity:.35}

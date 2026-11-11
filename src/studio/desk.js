@@ -45,7 +45,7 @@ export function initDesk(ctx) {
   const vp = $('deskVp'), world = $('deskWorld'), svg = $('deskLinks'), grid = $('deskGrid');
   const rulerX = $('rulerX'), rulerY = $('rulerY');
   const NS = 'http://www.w3.org/2000/svg';
-  let board = null, els = new Map(), linkEls = new Map(), selected = null, selLink = null, tool = 'select', tieFrom = null, zTop = 1;
+  let board = null, els = new Map(), linkEls = new Map(), selected = null, sel = new Set(), selLink = null, tool = 'select', tieFrom = null, zTop = 1;
   let saveTimer = null;
 
   /* ------------------------------------------------------------ frame scheduling */
@@ -182,16 +182,20 @@ export function initDesk(ctx) {
   const viewCenter = () => toWorld(...vpCenter());
   const byId = (id) => board.items.find((i) => i.id === id);
 
-  function select(id) {
-    if (selected === id && !selLink) return;
-    selected = id; selLink = null;
-    els.forEach((el, k) => el.classList.toggle('sel', k === id));
-    const it = id && byId(id);
-    if (it && (it.z || 0) < zTop) { it.z = ++zTop; place(it); }
-    drawLinks(); renderSelBar();
+  // `sel` holds every selected piece; `selected` is the primary one (the last clicked),
+  // or null when several are selected.
+  function setSel(ids) {
+    const linkWas = selLink; selLink = null;
+    const same = !linkWas && ids.length === sel.size && ids.every((i) => sel.has(i));
+    sel = new Set(ids); selected = sel.size === 1 ? ids[0] : null;
+    els.forEach((el, k) => el.classList.toggle('sel', sel.has(k)));
+    ids.forEach((i) => { const it = byId(i); if (it && (it.z || 0) < zTop && ids.length === 1) { it.z = ++zTop; place(it); } });
+    if (!same) { if (linkWas) drawLinks(); renderSelBar(); }
   }
+  const select = (id) => setSel(id ? [id] : []);
+  function toggleSel(id) { const ids = [...sel]; setSel(sel.has(id) ? ids.filter((i) => i !== id) : [...ids, id]); }
   function selectLink(id) {
-    selected = null; selLink = id;
+    selected = null; sel = new Set(); selLink = id;
     els.forEach((el) => el.classList.remove('sel'));
     drawLinks(); renderSelBar();
   }
@@ -206,6 +210,18 @@ export function initDesk(ctx) {
       bar.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { l.color = b.dataset.sc; drawLinks(); renderSelBar(); save(); });
       bar.querySelector('[data-a=slack]').onclick = () => { delete l.bend; drawLinks(); save(); };
       bar.querySelector('[data-a=taut]').onclick = () => { l.bend = { x: 0, y: 0 }; drawLinks(); save(); };
+    } else if (sel.size > 1) {
+      bar.innerHTML = `<span>${sel.size} pieces</span><button data-a="chain" title="Tie them together in the order you selected them">Tie together</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button><em>Shift-click to add or remove</em>`;
+      bar.hidden = false;
+      bar.querySelector('[data-a=chain]').onclick = () => {
+        const ids = [...sel]; let n = 0;
+        for (let i = 1; i < ids.length; i++) {
+          const a = ids[i - 1], b = ids[i];
+          if (!board.links.some((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a))) { board.links.push({ id: uid(), a, b }); n++; }
+        }
+        drawLinks(); save(); toast(n ? `Tied ${n} string${n > 1 ? 's' : ''}` : 'Already tied');
+      };
+      bar.querySelector('[data-a=dup]').onclick = duplicateSel;
     } else if (selected) {
       const it = byId(selected);
       let extra = '';
@@ -227,7 +243,7 @@ export function initDesk(ctx) {
         const cx = it.x + it.w / 2; [it.w, it.h] = [it.h, it.w]; it.x = Math.round(cx - it.w / 2); resized(it); renderSelBar();
       });
       bar.querySelector('[data-a=zoom]')?.addEventListener('click', () => zoomToItem(it));
-      bar.querySelector('[data-a=dup]').onclick = () => { const c = JSON.parse(JSON.stringify(it)); c.id = uid(); c.x += 40; c.y += 40; c.z = ++zTop; board.items.push(c); mount(c); select(c.id); save(); };
+      bar.querySelector('[data-a=dup]').onclick = duplicateSel;
       bar.querySelector('[data-a=tie]').onclick = () => { setTool('string'); tieFrom = selected; els.get(selected)?.classList.add('tie-from'); };
     } else { bar.hidden = true; return; }
     bar.querySelector('[data-a=del]').onclick = removeSelected;
@@ -237,12 +253,21 @@ export function initDesk(ctx) {
     const sz = els.get(it.id)?.querySelector('.sz'); if (sz) sz.textContent = sizeLabel(it);
     save();
   }
+  function duplicateSel() {
+    const map = new Map(), out = [];
+    [...sel].map(byId).filter(Boolean).forEach((it) => { const c = JSON.parse(JSON.stringify(it)); c.id = uid(); c.x += 48; c.y += 48; c.z = ++zTop; map.set(it.id, c.id); board.items.push(c); mount(c); out.push(c.id); });
+    // Strings between duplicated pieces are duplicated too.
+    board.links.filter((l) => map.has(l.a) && map.has(l.b)).forEach((l) => board.links.push({ ...l, id: uid(), a: map.get(l.a), b: map.get(l.b) }));
+    drawLinks(); setSel(out); save();
+  }
   function removeSelected() {
     if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; drawLinks(); renderSelBar(); save(); return; }
-    if (!selected) return;
-    board.items = board.items.filter((i) => i.id !== selected);
-    board.links = board.links.filter((l) => l.a !== selected && l.b !== selected);
-    els.get(selected)?.remove(); els.delete(selected); selected = null; drawLinks(); renderSelBar(); save();
+    if (!sel.size) return;
+    const gone = new Set(sel);
+    board.items = board.items.filter((i) => !gone.has(i.id));
+    board.links = board.links.filter((l) => !gone.has(l.a) && !gone.has(l.b));
+    gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
+    sel = new Set(); selected = null; drawLinks(); renderSelBar(); save();
   }
 
   /* ------------------------------------------------------------ strings */
@@ -340,22 +365,32 @@ export function initDesk(ctx) {
         }
         return;
       }
-      select(it.id);
+      if (e.shiftKey && !e.target.classList.contains('rz')) {
+        e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
+        const had = sel.has(it.id); toggleSel(it.id);
+        if (had) return; // removed from the selection: nothing to drag
+      } else if (!sel.has(it.id) || e.target.classList.contains('rz')) select(it.id);
       if (e.target.classList.contains('rz')) {
         e.preventDefault(); eatMouse = true;
         drag = { mode: 'resize', it, sx: e.clientX, sy: e.clientY, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
-      if (e.target.closest('input, button, select')) return;
-      const ed = e.target.closest('[contenteditable]');
+      if (!e.shiftKey && e.target.closest('input, button, select')) return;
+      const ed = !e.shiftKey && e.target.closest('[contenteditable]');
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
       e.preventDefault(); eatMouse = true;
-      drag = { mode: 'move', it, el: itEl, ed, sx: e.clientX, sy: e.clientY, x: it.x, y: it.y, moved: false };
+      const group = [...sel].map(byId).filter(Boolean).map((g) => ({ it: g, x: g.x, y: g.y, el: els.get(g.id) }));
+      drag = { mode: 'move', it, el: itEl, ed, group, sx: e.clientX, sy: e.clientY, moved: false };
       vp.setPointerCapture(e.pointerId); return;
     }
-    // Background
-    select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); }
+    // Background: Shift-drag draws a selection box; a plain drag pans.
     document.activeElement?.blur?.();
+    if (e.shiftKey) {
+      e.preventDefault();
+      const box = document.createElement('div'); box.className = 'desk-marquee'; vp.appendChild(box);
+      drag = { mode: 'marquee', box, sx: e.clientX, sy: e.clientY, base: [...sel], moved: false }; vp.setPointerCapture(e.pointerId); return;
+    }
+    select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); }
     startPan(e);
   });
   function startPan(e) { drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, x: view().x, y: view().y, moved: true }; vp.classList.add('panning'); vp.setPointerCapture(e.pointerId); }
@@ -365,10 +400,17 @@ export function initDesk(ctx) {
     if (!drag.moved) {
       if (Math.hypot(dx, dy) < 4) return;
       drag.moved = true;
-      if (drag.mode === 'move') { drag.el.classList.add('dragging'); if (drag.el.contains(document.activeElement)) document.activeElement.blur(); }
+      if (drag.mode === 'move') { drag.group.forEach((g) => g.el?.classList.add('dragging')); if (world.contains(document.activeElement)) document.activeElement.blur(); }
     }
     if (drag.mode === 'pan') { view().x = drag.x + dx; view().y = drag.y + dy; touchView(); }
-    else if (drag.mode === 'move') { drag.it.x = Math.round(drag.x + dx / z); drag.it.y = Math.round(drag.y + dy / z); touchItem(drag.it.id); }
+    else if (drag.mode === 'move') { drag.group.forEach((g) => { g.it.x = Math.round(g.x + dx / z); g.it.y = Math.round(g.y + dy / z); touchItem(g.it.id); }); }
+    else if (drag.mode === 'marquee') {
+      const r = vp.getBoundingClientRect(), x1 = Math.min(e.clientX, drag.sx), y1 = Math.min(e.clientY, drag.sy), x2 = Math.max(e.clientX, drag.sx), y2 = Math.max(e.clientY, drag.sy);
+      Object.assign(drag.box.style, { left: x1 - r.left + 'px', top: y1 - r.top + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' });
+      const a = toWorld(x1, y1), b = toWorld(x2, y2);
+      const hit = board.items.filter((i) => i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id);
+      setSel([...new Set([...drag.base, ...hit])]);
+    }
     else if (drag.mode === 'resize') {
       const it = drag.it, snap = (v) => Math.round(v / (IN / 4)) * (IN / 4);
       let w = Math.max(IN, drag.w + dx / z), h = Math.max(IN * 0.75, drag.h + dy / z);
@@ -394,10 +436,14 @@ export function initDesk(ctx) {
     if (!drag) return;
     const d = drag; drag = null;
     vp.classList.remove('panning');
-    if (d.el) d.el.classList.remove('dragging');
+    d.group?.forEach((g) => g.el?.classList.remove('dragging'));
+    d.box?.remove();
     if (d.mode === 'resize') { els.get(d.it.id)?.classList.remove('resizing'); renderSelBar(); }
-    if (d.mode === 'move' && !d.moved && d.ed && e?.type === 'pointerup') placeCaret(d.ed, e.clientX, e.clientY);
-    if (d.mode === 'pan') saveView(); else if (d.moved) save();
+    if (d.mode === 'move' && !d.moved && e?.type === 'pointerup' && !e.shiftKey) {
+      if (sel.size > 1) select(d.it.id); // a plain click inside a group picks that one piece
+      if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
+    }
+    if (d.mode === 'pan') saveView(); else if (d.moved && d.mode !== 'marquee') save();
   };
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
@@ -412,15 +458,16 @@ export function initDesk(ctx) {
   document.addEventListener('keydown', (e) => {
     if (!board || !$('v-desk').classList.contains('on')) return;
     const typing = e.target.closest?.('[contenteditable], input, textarea, select');
-    if (e.key === 'Escape') { setTool('select'); document.activeElement?.blur?.(); }
+    if (e.key === 'Escape') { const was = world.contains(document.activeElement); setTool('select'); document.activeElement?.blur?.(); if (!was && !typing) select(null); }
     if (typing) return;
-    if ((e.key === 'Delete' || e.key === 'Backspace') && (selected || selLink)) { e.preventDefault(); removeSelected(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && (sel.size || selLink)) { e.preventDefault(); removeSelected(); }
     if (e.key === 'v') setTool('select');
     if (e.key === 't') setTool('string');
     if (e.key === '0' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fitAll(); }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'd' && selected) { e.preventDefault(); $('deskSel').querySelector('[data-a=dup]')?.click(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'd' && sel.size) { e.preventDefault(); duplicateSel(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); setSel(board.items.map((i) => i.id)); }
     const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-    if (nudge && selected) { e.preventDefault(); const it = byId(selected), s = e.shiftKey ? IN : IN / 8; it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(it.id); save(); }
+    if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
   });
 
   /* ------------------------------------------------------------ drop: from sidebar (pointer drag), files */
@@ -608,7 +655,7 @@ export function initDesk(ctx) {
     board.items ||= []; board.links ||= [];
     zTop = Math.max(1, ...board.items.map((i) => i.z || 1));
     $('boardTitle').value = board.title;
-    selected = null; selLink = null;
+    selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
     applyView(); loadLib();
