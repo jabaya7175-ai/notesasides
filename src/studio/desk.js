@@ -89,6 +89,7 @@ export function initDesk(ctx) {
   function paintView() {
     const { x, y, z } = view();
     world.style.transform = `translate3d(${x}px,${y}px,0) scale(${z})`;
+    world.style.setProperty('--inv', (1 / z).toFixed(4)); // keeps handles the same size on screen
     const major = IN * z; let minor = (IN / 4) * z; if (minor < 7) minor = major;
     if (z !== lastGridZ) {
       lastGridZ = z;
@@ -188,7 +189,9 @@ export function initDesk(ctx) {
     el.querySelector('[data-act=post]')?.addEventListener('click', () => sheetToPost(it));
     el.querySelector('[data-act=open]')?.addEventListener('click', () => it.postId && openPost(it.postId));
     if (it.type === 'post') el.addEventListener('dblclick', () => it.postId && openPost(it.postId));
-    if (it.type === 'text') el.querySelector('.tx-body').addEventListener('input', () => { it.html = el.querySelector('.tx-body').innerHTML; it.h = el.offsetHeight; });
+    if (it.type === 'text') {
+      el.querySelector('.tx-body').addEventListener('input', () => { it.html = el.querySelector('.tx-body').innerHTML; measureText(it); });
+    }
     if (it.type === 'pdf') {
       el.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => pdfGo(it, +b.dataset.pg));
       el.querySelector('[data-act=openpdf]').onclick = async () => { const u = await signedUrl(it.path); if (u) open(u, '_blank', 'noopener'); };
@@ -206,7 +209,10 @@ export function initDesk(ctx) {
   }
   function place(it) {
     const el = els.get(it.id); if (!el) return;
-    el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.width = it.w + 'px'; el.style.zIndex = it.z || 1;
+    el.style.left = it.x + 'px'; el.style.top = it.y + 'px'; el.style.zIndex = it.z || 1;
+    const autoW = it.type === 'text' && it.autoW !== false;
+    el.style.width = autoW ? 'max-content' : it.w + 'px';
+    el.classList.toggle('autow', autoW);
     el.style.height = it.type === 'text' ? 'auto' : it.h + 'px';
     if (it.rot) el.style.setProperty('--rot', it.rot + 'deg');
   }
@@ -216,7 +222,7 @@ export function initDesk(ctx) {
     const el = els.get(it.id); if (!el) return;
     if (it.type === 'text') {
       const b = el.querySelector('.tx-body'); b.style.fontSize = TEXT_SIZES[it.size || 'M'] + 'px'; b.style.color = INK[it.color || 'ivory'];
-      requestAnimationFrame(() => { it.h = el.offsetHeight || it.h; });
+      requestAnimationFrame(() => measureText(it));
     }
     if (it.type === 'rect' || it.type === 'ellipse') {
       const w = it.w, h = it.h, sw = it.weight || 2, c = INK[it.color || 'ivory'], d = dashArray(it.dash, sw);
@@ -226,6 +232,7 @@ export function initDesk(ctx) {
     }
     if (it.type === 'line') paintLine(it);
   }
+  function measureText(it) { const el = els.get(it.id); if (!el) return; it.h = el.offsetHeight || it.h; if (it.autoW !== false) it.w = el.offsetWidth || it.w; updateLinks(new Set([it.id])); }
   // A line stores its ends relative to its box (it.p = [x1, y1, x2, y2]) so it moves like any piece.
   function setLineEnds(it, a, b) {
     it.x = Math.round(Math.min(a.x, b.x)); it.y = Math.round(Math.min(a.y, b.y));
@@ -606,6 +613,7 @@ export function initDesk(ctx) {
       } else if (!sel.has(it.id) || e.target.classList.contains('rz')) select(it.id);
       if (e.target.classList.contains('rz')) {
         e.preventDefault(); eatMouse = true;
+        if (it.type === 'text') { it.w = itEl.offsetWidth; it.autoW = false; place(it); }
         drag = { mode: 'resize', it, sx: e.clientX, sy: e.clientY, w: it.w, h: it.h, ratio: it.w / it.h, moved: true };
         itEl.classList.add('resizing'); vp.setPointerCapture(e.pointerId); return;
       }
@@ -651,6 +659,7 @@ export function initDesk(ctx) {
       let w = Math.max(small ? 24 : IN, drag.w + dx / z), h = Math.max(small ? 24 : IN * 0.75, drag.h + dy / z);
       if (e.shiftKey) h = w / drag.ratio;
       w = snap(w); h = snap(h);
+      if (it.type === 'text') { it.w = Math.max(24, Math.round(drag.w + dx / z)); place(it); measureText(it); return; }
       if (it.type === 'pdf') { w = Math.max(2 * IN, drag.w + dx / z); h = Math.round(w * (it.ar || 1.294)) + PDF_BAR; }
       if (it.type === 'image' && it.ar && !e.altKey) { w = Math.max(48, drag.w + dx / z); h = Math.round(w * it.ar); }
       if (it.type === 'sheet') {
@@ -734,6 +743,9 @@ export function initDesk(ctx) {
   };
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
   vp.addEventListener('dblclick', (e) => {
+    // Double-click a text box's width handle: back to one line (auto width).
+    const rz = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n.classList?.contains('rz') && n.closest('.it.text'));
+    if (rz) { const it = byId(rz.closest('.it').dataset.id); it.autoW = true; place(it); measureText(it); save(); return; }
     if (!e.target.closest('.it, .lk') && tool === 'select') { const p = toWorld(e.clientX, e.clientY); const it = addItem('text', p.x, p.y, {}); els.get(it.id).querySelector('.tx-body').focus({ preventScroll: true }); }
   });
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
