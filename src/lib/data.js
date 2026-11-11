@@ -3,7 +3,7 @@
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
 const H = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
-const POST_FIELDS = 'id,slug,title,subtitle,kind,body_html,notes,published_at,updated_at,paragraph_style,align,drop_cap';
+const POST_FIELDS = 'id,slug,title,subtitle,kind,body_html,notes,published_at,updated_at,paragraph_style,align,drop_cap,cover_url,cover_caption';
 
 async function get(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: H });
@@ -13,7 +13,7 @@ async function get(path) {
 
 export async function listPosts() {
   try {
-    return await get(`posts?select=id,slug,title,subtitle,kind,published_at,body_html,post_books(position,books(title))&status=eq.published&order=published_at.desc`);
+    return await get(`posts?select=id,slug,title,subtitle,kind,published_at,cover_url,post_books(position,books(title))&status=eq.published&order=published_at.desc`);
   } catch (e) {
     console.warn('[notes-and-asides] could not load posts:', e.message);
     return [];

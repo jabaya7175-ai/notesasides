@@ -90,7 +90,7 @@ let lastVersionAt = 0;
 
 function settingsFrom(p) {
   const dc = { ...DEFAULT_DROP_CAP, ...(p.drop_cap || {}) };
-  return { kind: p.kind, para: p.paragraph_style, align: p.align, dcOn: !!dc.on, dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
+  return { coverUrl: p.cover_url || '', coverCaption: p.cover_caption || '', kind: p.kind, para: p.paragraph_style, align: p.align, dcOn: !!dc.on, dcLines: +dc.lines, dcFrame: dc.frame || '', dcWeight: +dc.weight, dcColor: dc.color, slug: p.slug || '', sendEmail: !!p.send_email };
 }
 function makeNote(id, html) { const li = document.createElement('li'); li.dataset.id = id; li.contentEditable = 'true'; li.innerHTML = html || ''; return li; }
 
@@ -120,6 +120,7 @@ function collect() {
     kind: S.kind, paragraph_style: S.para, align: S.align, send_email: S.sendEmail,
     drop_cap: { on: S.dcOn, lines: S.dcLines, weight: S.dcWeight, color: S.dcColor, frame: S.dcFrame },
     slug: S.slug ? slugify(S.slug) : cur.post.slug,
+    cover_url: S.coverUrl || null, cover_caption: S.coverCaption || null,
   };
 }
 let saveTimer = null, saving = Promise.resolve();
@@ -245,6 +246,13 @@ function wireEditor() {
   seg('dcOnSeg', 'dcOn', (v) => v === 'on'); seg('dcLinesSeg', 'dcLines', Number); seg('dcFrameSeg', 'dcFrame'); seg('dcWeightSeg', 'dcWeight', Number);
   $('dcColor').querySelectorAll('button').forEach((b) => b.onclick = () => { S.dcColor = b.dataset.v; applySettings(); save(); if (previewing) renderPreview(); });
   $('slug').oninput = (e) => { S.slug = e.target.value; save(); };
+  $('coverCaption').oninput = (e) => { S.coverCaption = e.target.value; renderCover(); save(); };
+  $('coverInput').onchange = async () => {
+    const f = $('coverInput').files[0]; $('coverInput').value = ''; if (!f) return;
+    toast('Uploading cover image…');
+    const url = await upload(f, 'covers'); if (!url) return;
+    S.coverUrl = url; renderCover(); save(); toast('Cover image added');
+  };
   $('sendEmail').onchange = (e) => { S.sendEmail = e.target.checked; save(); };
   $('schedule').oninput = updateStatus;
   $('publishBtn').onclick = publish;
@@ -337,7 +345,8 @@ function dropcap() {
 function placeRail() {
   const sheet = $('sheet');
   if (matchMedia('(max-width:1260px)').matches) { sheet.style.setProperty('--rail-top', '0px'); return; }
-  sheet.style.setProperty('--rail-top', $('byline').getBoundingClientRect().bottom - $('art').getBoundingClientRect().top + 34 + 'px');
+  const anchor = S.coverUrl ? $('edCover') : $('byline');
+  sheet.style.setProperty('--rail-top', anchor.getBoundingClientRect().bottom - $('art').getBoundingClientRect().top + 34 + 'px');
 }
 
 /* ---------- books ---------- */
@@ -398,6 +407,25 @@ async function upload(file, folder) {
 
 /* ---------- settings ---------- */
 function openDrawer(id) { document.querySelectorAll('.drawer.open').forEach((d) => d.classList.remove('open')); $(id).classList.add('open'); }
+function renderCover() {
+  const fig = $('edCover');
+  if (S.coverUrl) {
+    fig.innerHTML = `<img src="${esc(S.coverUrl)}" alt="" title="Change cover image">${S.coverCaption ? `<figcaption>${esc(S.coverCaption)}</figcaption>` : ''}<div class="tools"><button data-c="change">Change</button><button data-c="caption">Caption</button><button data-c="remove">Remove</button></div>`;
+    fig.querySelector('img').onclick = () => $('coverInput').click();
+    fig.querySelector('[data-c=change]').onclick = () => $('coverInput').click();
+    fig.querySelector('[data-c=caption]').onclick = () => { openDrawer('settings'); $('coverCaption').focus(); };
+    fig.querySelector('[data-c=remove]').onclick = () => { S.coverUrl = ''; renderCover(); save(); };
+  } else {
+    fig.innerHTML = '<button class="addcover">+ Add a cover image</button>';
+    fig.querySelector('button').onclick = () => $('coverInput').click();
+  }
+  $('coverField').innerHTML = S.coverUrl
+    ? `<div class="coverthumb"><img src="${esc(S.coverUrl)}" alt=""><button class="btn" id="cfChange">Change</button><button class="btn" id="cfRemove">Remove</button></div>`
+    : '<button class="btn" id="cfChange">Upload image</button>';
+  $('cfChange').onclick = () => $('coverInput').click();
+  $('cfRemove')?.addEventListener('click', () => { S.coverUrl = ''; renderCover(); save(); });
+  relayout();
+}
 function applySettings() {
   const sheet = $('sheet');
   sheet.classList.toggle('review', S.kind === 'review'); sheet.classList.toggle('book', S.para === 'book'); sheet.classList.toggle('justify', S.align === 'justify');
@@ -408,6 +436,8 @@ function applySettings() {
   $('booksBox').style.display = S.kind === 'review' ? '' : 'none';
   $('slug').value = S.slug || ''; $('slug').placeholder = slugify(titleEl().textContent) || 'post-url';
   $('sendEmail').checked = S.sendEmail;
+  $('coverCaption').value = S.coverCaption || '';
+  renderCover();
   renderBooks();
 }
 

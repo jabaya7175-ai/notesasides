@@ -60,7 +60,7 @@ export function initReader(root = document) {
     article.classList.toggle('fitted', ok);
   }
   function placeRail() {
-    const by = article.querySelector('.byline');
+    const by = article.querySelector('.lead-cover') || article.querySelector('.byline');
     if (!by) return;
     article.style.setProperty('--rail-top', matchMedia('(max-width:1260px)').matches ? '0px' : by.getBoundingClientRect().bottom - article.getBoundingClientRect().top + 34 + 'px');
   }

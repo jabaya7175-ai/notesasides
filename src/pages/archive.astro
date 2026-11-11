@@ -1,12 +1,17 @@
 ---
 import Site from '../layouts/Site.astro';
-import PostList from '../components/PostList.astro';
 import { listPosts } from '../lib/data.js';
+import { postListHTML } from '../lib/render.js';
 const posts = await listPosts();
 ---
 <Site title="Archive" current="archive">
-  <div class="home">
+  <div class="home wide">
     <h1 style="margin-bottom:36px">Archive</h1>
-    <PostList posts={posts} />
+    <div id="posts"><Fragment set:html={postListHTML(posts, import.meta.env.BASE_URL)} /></div>
   </div>
+  <script>
+    import { listPosts } from '../lib/data.js';
+    import { postListHTML } from '../lib/render.js';
+    listPosts().then((posts) => { if (posts.length) document.getElementById('posts').innerHTML = postListHTML(posts, import.meta.env.BASE_URL); }).catch(() => {});
+  </script>
 </Site>

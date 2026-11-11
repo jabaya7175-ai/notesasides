@@ -2,13 +2,32 @@
 import Site from '../layouts/Site.astro';
 import Subscribe from '../components/Subscribe.astro';
 import { AUTHOR, TAGLINE } from '../lib/config.js';
+import { commonsImage } from '../lib/demo.js';
 ---
-<Site title="About" current="about">
-  <div class="prose">
+<Site title="About" current="about" description={TAGLINE}>
+  <figure class="about-hero">
+    <img src={commonsImage('Hubert van Eyck 004.jpg', 2400)} alt="The Adoration of the Lamb: a crowd of saints, clergy and pilgrims gathered around the Lamb on an altar in a green meadow.">
+    <figcaption>Adoration of the Lamb, Jan van Eyck, center panel of the Ghent Altarpiece, c. 1432.</figcaption>
+  </figure>
+  <div class="about">
     <p class="kicker caps">About</p>
     <h1>Notes &amp; Asides.</h1>
-    <p><em>{TAGLINE}</em></p>
-    <p>{AUTHOR} — architect, Presbyterian, pursuing the good, the true, and the beautiful.</p>
-    <div style="margin-top:40px"><Subscribe /></div>
+    <p class="dek">{TAGLINE}</p>
+
+    <p>A note is the main line of a thought; an aside is what keeps it honest. This publication keeps both. The essays here run in the center column, and the qualifications, citations and second thoughts sit beside them in the margin, where a reader can take them or leave them.</p>
+    <p>The subjects are the ones that will not leave me alone: what makes a building good, what makes a city livable, what the old books still have to say, and how the Reformed faith speaks to all of it. Some pieces are essays. Some are reviews of books worth arguing with. All of them are written slowly.</p>
+
+    <div class="card">
+      <div class="mono" aria-hidden="true">J</div>
+      <div><b>{AUTHOR}</b><span>Architect · Presbyterian · Pursuing the good, the true, the beautiful.</span></div>
+    </div>
+
+    <h2>What you'll find here</h2>
+    <p><b>Essays</b> on architecture, culture and conservative thought, set like the pages of a book. <b>Reviews</b> of books old and new, with the book itself beside the text. <b>Notes</b> in the margin, opened with a click.</p>
+
+    <h2>Subscribe</h2>
+    <p>New essays arrive by email. No more than the writing warrants, and never anything else.</p>
+    <div class="sub"><Subscribe /></div>
+    <p class="sig">— J.A.A.</p>
   </div>
 </Site>

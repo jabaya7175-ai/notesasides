@@ -1,0 +1,18 @@
+---
+import Site from '../../../layouts/Site.astro';
+import { renderArticle } from '../../../lib/render.js';
+import { DEMO_POSTS } from '../../../lib/demo.js';
+export function getStaticPaths() {
+  return DEMO_POSTS.map((p) => ({ params: { slug: p.slug }, props: { post: p } }));
+}
+const { post } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+<Site title={post.title} description={post.subtitle}>
+  <div class="demo-banner">Demo article. <a href={`${base}demo/`}>All demo articles</a></div>
+  <Fragment set:html={renderArticle(post, post.books || [])} />
+  <script>
+    import { initReader } from '../../../scripts/reader.js';
+    initReader(document);
+  </script>
+</Site>

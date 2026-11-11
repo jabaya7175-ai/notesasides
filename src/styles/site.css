@@ -37,6 +37,11 @@ h1{font-weight:700;font-size:50px;line-height:1.04;margin:0 0 14px;letter-spacin
 .byline{font-size:17px;color:var(--ink-soft);padding-bottom:26px;margin-bottom:30px;border-bottom:1px solid var(--rule);line-height:1.4}
 .byline .by{color:var(--ink)}
 
+/* ---------- Cover image ---------- */
+.lead-cover{margin:0 0 34px}
+.lead-cover img{display:block;width:100%;max-height:520px;object-fit:cover;background:#18212C}
+.lead-cover figcaption{font-size:15px;font-style:italic;color:var(--ink-soft);margin-top:8px;line-height:1.4}
+
 /* ---------- Body ---------- */
 .body p{margin:0;hyphens:auto;-webkit-hyphens:auto}
 .post.justify .body p{text-align:justify}
@@ -108,6 +113,22 @@ sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .subscribe input{font:inherit;font-size:17px;padding:8px 12px;min-width:260px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink)}
 .subscribe button{font:inherit;font-size:13px;letter-spacing:.2em;text-transform:uppercase;font-weight:600;padding:9px 20px;border:0;border-radius:4px;background:var(--red);color:#fff;cursor:pointer}
 .subscribe .msg{width:100%;text-align:center;font-size:16px;font-style:italic;color:var(--ink-soft);min-height:1.4em;margin-top:4px}
+.leadstory{margin:0 0 44px;padding-bottom:40px;border-bottom:1px solid var(--rule)}
+.leadstory .lc{display:block;margin-bottom:22px}
+.leadstory .lc img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#18212C}
+.leadstory h2{font-size:44px;line-height:1.05;margin:10px 0 10px;font-weight:700}
+.leadstory h2 a{text-decoration:none}
+.leadstory h2 a:hover{color:var(--red)}
+.leadstory p{margin:0;color:var(--ink-soft);font-style:italic;font-size:22px;line-height:1.4}
+.postlist .bt{text-transform:none;letter-spacing:0;font-size:15px;font-weight:400}
+.postlist li.has-thumb{display:grid;grid-template-columns:1fr 168px;gap:28px;align-items:start}
+.postlist .thumb img{display:block;width:168px;aspect-ratio:4/3;object-fit:cover;background:#18212C}
+.leadstory .bt{text-transform:none;letter-spacing:0;font-size:15px;font-weight:400}
+.leadstory .meta{font-size:12px;letter-spacing:.18em;text-transform:uppercase;font-weight:600;color:var(--red);font-variant-numeric:lining-nums;line-height:1.4}
+.leadstory .meta .d{color:var(--ink-soft);font-weight:500}
+.home.wide{max-width:46rem}
+.demo-banner{background:var(--red);color:#fff;text-align:center;font-size:15px;padding:7px 12px;letter-spacing:.02em}
+.demo-banner a{color:#fff}
 .postlist{list-style:none;margin:0;padding:0}
 .postlist li{padding:0 0 30px;margin:0 0 30px;border-bottom:1px solid var(--rule)}
 .postlist li:last-child{border-bottom:0}
@@ -121,6 +142,23 @@ sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .prose{max-width:40rem;margin:0 auto;padding:64px 24px 100px}
 .prose h1{margin-bottom:24px}
 .prose p{margin:0 0 1em}
+
+/* ---------- About ---------- */
+.about-hero{margin:0;position:relative}
+.about-hero img{display:block;width:100%;height:min(46vh,440px);object-fit:cover;object-position:center 62%}
+.about-hero figcaption{max-width:40rem;margin:10px auto 0;padding:0 24px;font-size:15px;font-style:italic;color:var(--ink-soft)}
+.about{max-width:40rem;margin:0 auto;padding:48px 24px 100px}
+.about h1{margin:0 0 10px}
+.about .dek{margin-bottom:30px}
+.about h2{font-weight:400;font-variant:small-caps;letter-spacing:.09em;font-size:30px;margin:1.6em 0 .3em;line-height:1.1}
+.about p{margin:0}
+.about p + p{text-indent:2.1em}
+.about .sig{margin-top:1.4em;text-align:right;font-style:italic;color:var(--ink-soft)}
+.about .card{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;margin:36px 0;padding:24px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.about .mono{width:76px;height:76px;display:grid;place-items:center;border:5px double var(--ink);font-size:40px;font-weight:500}
+.about .card b{display:block;font-size:22px}
+.about .card span{color:var(--ink-soft);font-style:italic}
+.about .sub{margin-top:30px}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1260px){
@@ -141,6 +179,7 @@ sup.ref button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
   header.site{padding:14px 18px;flex-wrap:wrap;row-gap:4px} header.site nav{width:100%} header.site nav a{margin:0 18px 0 0;font-size:15px}
   .wordmark{font-size:24px}
   h1{font-size:38px} .dek{font-size:21px} .post.book .body h2{font-size:28px}
-  .masthead h1{font-size:40px} .postlist h2{font-size:28px}
+  .masthead h1{font-size:40px} .postlist h2{font-size:28px} .leadstory h2{font-size:34px}
+  .postlist li.has-thumb{grid-template-columns:1fr 96px;gap:16px} .postlist .thumb img{width:96px}
   .layout{padding-top:40px}
 }

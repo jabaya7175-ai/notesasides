@@ -1,0 +1,19 @@
+---
+import Site from '../../layouts/Site.astro';
+import Subscribe from '../../components/Subscribe.astro';
+import { postListHTML } from '../../lib/render.js';
+import { demoListRows } from '../../lib/demo.js';
+import { TAGLINE } from '../../lib/config.js';
+const base = import.meta.env.BASE_URL;
+---
+<Site title="Demo">
+  <div class="demo-banner">Demo: sample essays to show the design. <a href={base}>Back to the real site</a></div>
+  <div class="home wide">
+    <section class="masthead">
+      <h1>Notes &amp; Asides.</h1>
+      <p>{TAGLINE}</p>
+      <Subscribe />
+    </section>
+    <Fragment set:html={postListHTML(demoListRows(), base, { lead: true, prefix: 'demo/p/' })} />
+  </div>
+</Site>

@@ -228,3 +228,15 @@ body.previewing #preview{display:block}
   .doc-title{font-size:38px} :root{--fs:19.5px}
   .sheet .edgrid{padding:36px 18px 140px}
 }
+
+/* Cover image in the editor */
+.edcover{margin:0 0 34px}
+.edcover img{display:block;width:100%;max-height:520px;object-fit:cover;cursor:pointer}
+.edcover figcaption{font-size:15px;font-style:italic;color:var(--ink-soft);margin-top:8px;line-height:1.4}
+.edcover .addcover{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;text-align:center;padding:14px;border:1px dashed var(--rule);border-radius:4px;color:var(--muted);font-size:16px}
+.edcover .addcover:hover{color:var(--ink);border-color:var(--ink-soft)}
+.edcover .tools{display:flex;gap:6px;margin-top:6px}
+.edcover .tools button{all:unset;cursor:pointer;font-size:14px;color:var(--muted);padding:2px 8px;border-radius:4px}
+.edcover .tools button:hover{color:var(--ink);background:var(--hover)}
+.coverthumb{display:flex;align-items:center;gap:10px}
+.coverthumb img{width:72px;height:48px;object-fit:cover;border-radius:3px}

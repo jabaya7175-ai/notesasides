@@ -62,10 +62,37 @@ export function renderArticle(post, books = []) {
     <h1>${esc(post.title || 'Untitled')}</h1>
     ${post.subtitle ? `<p class="dek">${esc(post.subtitle)}</p>` : ''}
     <div class="byline"><span class="by">${esc(AUTHOR)}</span> · ${esc(date)} · ${readingMinutes(post.body_html)} min read</div>
+    ${coverFigure(post)}
     ${review ? bookRail(books) : ''}
     <div class="body">${html}</div>
     ${end}
   </article>
   <aside class="margin" aria-label="Notes">${side}</aside>
 </div>`;
+}
+
+export function coverFigure(post) {
+  if (!post.cover_url) return '';
+  return `<figure class="lead-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.cover_caption || post.title || '')}">${post.cover_caption ? `<figcaption>${esc(post.cover_caption)}</figcaption>` : ''}</figure>`;
+}
+
+/** Home / archive list. The first post can be set as a large lead story. */
+export function postListHTML(posts, base, { lead = false, prefix = 'p/' } = {}) {
+  if (!posts.length) return '<p class="empty">The first essay is on its way.</p>';
+  const meta = (p) => {
+    const books = (p.post_books || []).sort((a, b) => a.position - b.position).map((x) => x.books?.title).filter(Boolean);
+    return `<div class="meta">${p.kind === 'review' ? 'Review' : 'Essay'}${books.length ? `<span class="d"> · <i class="bt">${books.map(esc).join(', ')}</i></span>` : ''} <span class="d">· ${esc(formatDate(p.published_at))}</span></div>`;
+  };
+  const href = (p) => `${base}${prefix}${encodeURIComponent(p.slug)}/`;
+  let out = '';
+  let rest = posts;
+  if (lead) {
+    const p = posts[0]; rest = posts.slice(1);
+    out += `<article class="leadstory">${p.cover_url ? `<a class="lc" href="${href(p)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.cover_url)}" alt=""></a>` : ''}
+      <div class="lt">${meta(p)}<h2><a href="${href(p)}">${esc(p.title)}</a></h2>${p.subtitle ? `<p>${esc(p.subtitle)}</p>` : ''}</div></article>`;
+  }
+  if (rest.length) {
+    out += '<ul class="postlist">' + rest.map((p) => `<li class="${p.cover_url ? 'has-thumb' : ''}"><div class="pt">${meta(p)}<h2><a href="${href(p)}">${esc(p.title)}</a></h2>${p.subtitle ? `<p>${esc(p.subtitle)}</p>` : ''}</div>${p.cover_url ? `<a class="thumb" href="${href(p)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.cover_url)}" alt="" loading="lazy"></a>` : ''}</li>`).join('') + '</ul>';
+  }
+  return out;
 }

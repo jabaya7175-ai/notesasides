@@ -103,6 +103,8 @@ const base = import.meta.env.BASE_URL;
         <div class="doc-title" id="title" contenteditable="true" data-ph="Title"></div>
         <div class="doc-sub" id="subtitle" contenteditable="true" data-ph="Add a subtitle…"></div>
         <div class="byline" id="byline"></div>
+        <figure class="edcover" id="edCover"></figure>
+        <input type="file" id="coverInput" accept="image/*" hidden>
         <aside class="edrail" id="rail" aria-label="Books reviewed"></aside>
         <div class="doc-body" id="body" contenteditable="true" data-ph="Start writing…"></div>
       </article>
@@ -137,7 +139,9 @@ const base = import.meta.env.BASE_URL;
     <h5>Article</h5>
     <div class="field">Type<div class="seg" id="kindSeg"><button data-v="essay">Essay</button><button data-v="review">Book review</button></div></div>
     <div id="booksBox"><div id="booksList"></div><button class="btn" id="addBook2">+ Add book</button></div>
-    <div class="field" style="margin-top:12px">URL<input type="text" id="slug" spellcheck="false"></div>
+    <div class="field" style="margin-top:12px">Cover image<div id="coverField"></div></div>
+    <div class="field">Cover caption or credit<input type="text" id="coverCaption" placeholder="e.g. The Geographer, Johannes Vermeer, 1669"></div>
+    <div class="field">URL<input type="text" id="slug" spellcheck="false"></div>
   </section>
   <section>
     <h5>Typesetting</h5>
