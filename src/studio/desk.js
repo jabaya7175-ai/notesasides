@@ -22,7 +22,8 @@ const fmtIn = (u) => { const v = Math.round((u / IN) * 4) / 4; return String(v).
 function paperSize(key, land) { const [, w, h] = PAPER[key] || PAPER.letter; return land ? [w * IN, h * IN].reverse() : [w * IN, h * IN]; }
 function sizeLabel(it) {
   const dims = `${fmtIn(it.w)} × ${fmtIn(it.h)} in`;
-  return it.paper && it.paper !== 'custom' ? `${PAPER[it.paper][0]} · ${dims}` : dims;
+  const pg = it.chain ? `Page ${it.page} · ` : '';
+  return pg + (it.paper && it.paper !== 'custom' ? `${PAPER[it.paper][0]} · ${dims}` : dims);
 }
 
 export function mdToHtml(md) {
@@ -153,6 +154,7 @@ export function initDesk(ctx) {
     const el = document.createElement('div');
     el.className = `it ${it.type}`; el.dataset.id = it.id; el.innerHTML = itemHTML(it);
     if (it.type === 'note') el.style.background = NOTE_COLORS[it.color || 'yellow'];
+    if ((it.page || 1) > 1) el.classList.add('contpage');
     world.appendChild(el); els.set(it.id, el); place(it);
     el.querySelectorAll('[contenteditable]').forEach((ed) => ed.addEventListener('input', () => {
       if (ed.classList.contains('sh-body') || ed.classList.contains('nt-body') || ed.classList.contains('q-body')) it.html = ed.innerHTML;
@@ -228,7 +230,9 @@ export function initDesk(ctx) {
       if (it.type === 'note') extra = Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
       if (it.type === 'sheet') {
         extra = `<select data-a="paper" title="Paper size">${Object.entries(PAPER).map(([k, [n, w, h]]) => `<option value="${k}"${it.paper === k ? ' selected' : ''}>${n} (${w} × ${h})</option>`).join('')}<option value="custom"${!it.paper || it.paper === 'custom' ? ' selected' : ''}>Custom (${fmtIn(it.w)} × ${fmtIn(it.h)})</option></select>` +
-          `<button data-a="orient" title="Portrait / landscape">${it.w > it.h ? 'Landscape' : 'Portrait'}</button><button data-a="zoom">Zoom to sheet</button>`;
+          `<button data-a="orient" title="Portrait / landscape">${it.w > it.h ? 'Landscape' : 'Portrait'}</button><button data-a="zoom">Zoom to sheet</button>` +
+          (overflows(it) ? '<button data-a="split" title="Flow the overflow onto new pages">Split into pages</button>' : '') +
+          (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '');
       }
       bar.innerHTML = `<span>${{ sheet: 'Sheet', note: 'Note', quote: 'Quote', image: 'Image', post: 'Post card' }[it.type]}</span>${extra}` +
         '<button data-a="tie">Tie string</button><button data-a="dup">Duplicate</button><button data-a="del">Delete</button>';
@@ -243,6 +247,8 @@ export function initDesk(ctx) {
         const cx = it.x + it.w / 2; [it.w, it.h] = [it.h, it.w]; it.x = Math.round(cx - it.w / 2); resized(it); renderSelBar();
       });
       bar.querySelector('[data-a=zoom]')?.addEventListener('click', () => zoomToItem(it));
+      bar.querySelector('[data-a=split]')?.addEventListener('click', () => splitSheet(it));
+      bar.querySelector('[data-a=join]')?.addEventListener('click', () => joinSheets(it));
       bar.querySelector('[data-a=dup]').onclick = duplicateSel;
       bar.querySelector('[data-a=tie]').onclick = () => { setTool('string'); tieFrom = selected; els.get(selected)?.classList.add('tie-from'); };
     } else { bar.hidden = true; return; }
@@ -268,6 +274,91 @@ export function initDesk(ctx) {
     board.links = board.links.filter((l) => !gone.has(l.a) && !gone.has(l.b));
     gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
     sel = new Set(); selected = null; drawLinks(); renderSelBar(); save();
+  }
+
+  /* ------------------------------------------------------------ pages: split & join */
+  // A sheet whose text runs past its bottom margin can be split: the overflow moves
+  // onto new sheets of the same size, placed to the right, breaking mid-paragraph at
+  // the last line that fits. Pages share a `chain` (the first page's id) and `page` no.
+  const PAD_BOTTOM = 72;
+  function overflows(it) { const pg = els.get(it.id)?.querySelector('.page'); return !!pg && pg.scrollHeight > pg.clientHeight + 2; }
+  function chainOf(it) {
+    const root = it.chain || it.id;
+    return board.items.filter((i) => i.type === 'sheet' && (i.id === root || i.chain === root)).sort((a, b) => (a.page || 1) - (b.page || 1));
+  }
+  function splitPoint(block, limit) {
+    // First word in `block` whose line falls below `limit` (screen px), as a DOM position.
+    const tw = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    const r = document.createRange();
+    for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+      const re = /\S+/g; let m;
+      while ((m = re.exec(n.data))) {
+        r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const rc = r.getClientRects()[0]; if (rc && rc.bottom > limit + 0.5) return { node: n, offset: m.index };
+      }
+    }
+    return null;
+  }
+  function splitOnce(it) {
+    const el = els.get(it.id), page = el.querySelector('.page'), body = el.querySelector('.sh-body');
+    page.scrollTop = 0;
+    if (page.scrollHeight <= page.clientHeight + 2) return null;
+    if (!body.children.length && body.textContent.trim()) body.innerHTML = `<p>${body.innerHTML}</p>`;
+    const z = view().z, limit = page.getBoundingClientRect().bottom - PAD_BOTTOM * z;
+    const blocks = [...body.children];
+    const i = blocks.findIndex((b) => b.getBoundingClientRect().bottom > limit + 0.5);
+    if (i < 0) return null;
+    const moved = document.createElement('div');
+    const first = blocks[i], sp = first.getBoundingClientRect().top < limit - 4 ? splitPoint(first, limit) : null;
+    if (sp && !(i === 0 && sp.node === first.firstChild && sp.offset === 0)) {
+      const r = document.createRange(); r.setStart(sp.node, sp.offset); r.setEnd(first, first.childNodes.length);
+      const tail = first.cloneNode(false); tail.appendChild(r.extractContents()); tail.classList.add('cont');
+      moved.appendChild(tail); blocks.slice(i + 1).forEach((b) => moved.appendChild(b));
+    } else {
+      if (i === 0) return null; // a single block taller than the page: leave it
+      blocks.slice(i).forEach((b) => moved.appendChild(b));
+    }
+    it.html = body.innerHTML;
+    const root = it.chain || it.id; it.chain = root; it.page ||= 1;
+    // Make room: later pages shift one number along.
+    board.items.forEach((o) => { if (o.chain === root && o.id !== it.id && o.page > it.page) { o.page++; refreshLabel(o); } });
+    const nx = { id: uid(), type: 'sheet', paper: it.paper, w: it.w, h: it.h, x: it.x + it.w + 48, y: it.y, z: ++zTop, rot: 0, title: it.title || '', html: moved.innerHTML, chain: root, page: it.page + 1 };
+    board.items.forEach((o) => { if (o.chain === root && o.page > nx.page) { o.x += it.w + 48; place(o); } });
+    board.items.push(nx); mount(nx); refreshLabel(it);
+    return nx;
+  }
+  function splitSheet(it) {
+    let cur = it, made = 0;
+    while (cur && made < 60) { cur = splitOnce(cur); if (cur) made++; }
+    drawLinks(); renderSelBar(); save();
+    toast(made ? `Split into ${made + 1} pages` : 'Nothing to split');
+  }
+  function joinSheets(it) {
+    const pages = chainOf(it); if (pages.length < 2) return;
+    const head = pages[0];
+    head.html = joinedHtml(pages); delete head.chain; delete head.page;
+    const gone = new Set(pages.slice(1).map((p) => p.id));
+    board.links.forEach((l) => { if (gone.has(l.a)) l.a = head.id; if (gone.has(l.b)) l.b = head.id; });
+    board.links = board.links.filter((l) => l.a !== l.b);
+    board.items = board.items.filter((i) => !gone.has(i.id));
+    gone.forEach((id) => { els.get(id)?.remove(); els.delete(id); });
+    const el = els.get(head.id); el.querySelector('.sh-body').innerHTML = head.html; refreshLabel(head);
+    setSel([head.id]); drawLinks(); renderSelBar(); save(); toast('Pages joined');
+  }
+  function joinedHtml(pages) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = pages.map((p) => p.html || '').join('');
+    // Re-join paragraphs that a split cut in two.
+    tmp.querySelectorAll('.cont').forEach((c) => {
+      const prev = c.previousElementSibling;
+      if (prev && prev.tagName === c.tagName) { prev.append(...c.childNodes); c.remove(); } else { c.classList.remove('cont'); if (!c.className) c.removeAttribute('class'); }
+    });
+    return tmp.innerHTML;
+  }
+  function refreshLabel(it) {
+    const el = els.get(it.id); if (!el) return;
+    const sz = el.querySelector('.sz'); if (sz) sz.textContent = sizeLabel(it);
+    el.classList.toggle('contpage', (it.page || 1) > 1);
   }
 
   /* ------------------------------------------------------------ strings */
@@ -448,8 +539,8 @@ export function initDesk(ctx) {
   vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
   vp.addEventListener('dblclick', (e) => { const k = e.target.closest('.knob'); if (k && selLink) { const l = board.links.find((x) => x.id === selLink); delete l.bend; updateLinks(new Set([l.id])); save(); } });
   vp.addEventListener('wheel', (e) => {
-    const ed = e.target.closest('.sh-body, .nt-body, .q-body');
-    if (ed && !e.ctrlKey && !e.metaKey && ed.scrollHeight > ed.clientHeight && e.target.closest('.it')?.classList.contains('editing')) return; // scroll text being edited
+    const sc = e.target.closest('.page, .nt-body, .q-body'), host = e.target.closest('.it');
+    if (sc && !e.ctrlKey && !e.metaKey && sc.scrollHeight > sc.clientHeight && host && (host.classList.contains('editing') || host.classList.contains('sel'))) return; // scroll the selected piece's text
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) zoomAt(view().z * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0025)), e.clientX, e.clientY);
     else { view().x -= e.deltaX; view().y -= e.deltaY; touchView(); saveView(); }
@@ -528,7 +619,7 @@ export function initDesk(ctx) {
   async function sheetToPost(it) {
     const ok = await confirmBox('Make a post from this sheet?', `<p>A new draft called “${escH(it.title || 'Untitled')}” will open in the editor with this sheet's text. The sheet stays on your board.</p>`, 'Create draft');
     if (!ok) return;
-    const html = (it.html || '').replace(/<div>/g, '<p>').replace(/<\/div>/g, '</p>').replace(/<p><br><\/p>/g, '');
+    const html = joinedHtml(chainOf(it)).replace(/<div>/g, '<p>').replace(/<\/div>/g, '</p>').replace(/<p><br><\/p>/g, '');
     const { data, error } = await sb.from('posts').insert({ title: it.title || '', body_html: html, source: 'studio' }).select('id').single();
     if (error) { toast('Could not create the draft: ' + error.message); return; }
     it.postId = data.id; save(); openPost(data.id);
