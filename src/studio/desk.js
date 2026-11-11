@@ -61,6 +61,11 @@ export function initDesk(ctx) {
   let style = { color: 'ivory', weight: 2, dash: 'solid', fill: false, ends: 'none', size: 'M' };
   try { Object.assign(style, JSON.parse(localStorage.getItem('na-desk-style') || '{}')); } catch {}
   const remember = (patch) => { Object.assign(style, patch); try { localStorage.setItem('na-desk-style', JSON.stringify(style)); } catch {} };
+  // Preferences that apply to every board (kept in this browser).
+  let prefs = { notePad: 12 }; try { Object.assign(prefs, JSON.parse(localStorage.getItem('na-desk-prefs') || '{}')); } catch {}
+  const setPref = (patch) => { Object.assign(prefs, patch); try { localStorage.setItem('na-desk-prefs', JSON.stringify(prefs)); } catch {} applyPrefs(); };
+  function applyPrefs() { world.style.setProperty('--note-pad', prefs.notePad + 'px'); }
+  applyPrefs();
   let ink = null; // PDF markup mode: { id, mode: 'pen'|'hl'|'erase', color }
 
   /* ------------------------------------------------------------ frame scheduling */
@@ -91,10 +96,12 @@ export function initDesk(ctx) {
     const { x, y, z } = view();
     world.style.transform = `translate3d(${x}px,${y}px,0) scale(${z})`;
     world.style.setProperty('--inv', (1 / z).toFixed(4)); // keeps handles the same size on screen
-    const major = IN * z; let minor = (IN / 4) * z; if (minor < 7) minor = major;
+    const bg = bgOf(), cell = IN * bg.size * z;
+    let minor = cell, major = cell * 4; if (minor < 6) minor = major; if (major < 6) major = minor = 6 * Math.ceil(6 / cell);
     if (z !== lastGridZ) {
       lastGridZ = z;
-      grid.style.backgroundSize = `${major}px ${major}px, ${major}px ${major}px, ${minor}px ${minor}px, ${minor}px ${minor}px`;
+      const sizes = bg.grid === 'dots' ? `${major}px ${major}px, ${minor}px ${minor}px` : `${major}px ${major}px, ${major}px ${major}px, ${minor}px ${minor}px, ${minor}px ${minor}px`;
+      grid.style.backgroundSize = sizes;
       grid.style.width = vp.clientWidth + 2 * major + 'px'; grid.style.height = vp.clientHeight + 2 * major + 'px';
     }
     const ox = ((x % major) + major) % major - major, oy = ((y % major) + major) % major - major;
@@ -103,6 +110,51 @@ export function initDesk(ctx) {
     drawRulers();
   }
   const applyView = () => { lastGridZ = 0; paintView(); };
+
+  /* ------------------------------------------------------------ background: colour, opacity, grid */
+  const BG_PRESETS = { Blueprint: '#22344A', Charcoal: '#1F2328', Slate: '#2E3742', 'Drafting green': '#2D463C', Oxblood: '#4A2427', Kraft: '#7A6247', Vellum: '#E4DECF', White: '#F7F6F2' };
+  const BG_DEFAULT = { color: '#22344A', opacity: 1, grid: 'lines', size: 0.25, gridOpacity: 1 };
+  let bgLast = {}; try { bgLast = JSON.parse(localStorage.getItem('na-desk-bg') || '{}'); } catch {}
+  const bgOf = () => ({ ...BG_DEFAULT, ...(board?.view?.bg || {}) });
+  const hexRgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  function paintBg() {
+    const b = bgOf(), [r, g, bl] = hexRgb(b.color);
+    vp.style.backgroundColor = `rgba(${r},${g},${bl},${b.opacity})`;
+    const light = (0.299 * r + 0.587 * g + 0.114 * bl) / 255 > 0.55;
+    const c = light ? '30,40,54' : '170,200,230', k = b.gridOpacity;
+    const maj = `rgba(${c},${Math.min(1, (light ? 0.2 : 0.17) * k)})`, min = `rgba(${c},${Math.min(1, (light ? 0.08 : 0.06) * k)})`;
+    grid.style.display = b.grid === 'none' ? 'none' : '';
+    grid.style.backgroundImage = b.grid === 'dots'
+      ? `radial-gradient(circle at 1px 1px, ${maj.replace(/[\d.]+\)$/, (m) => Math.min(1, parseFloat(m) * 2.6) + ')')} 1.4px, transparent 1.9px), radial-gradient(circle at 1px 1px, ${min.replace(/[\d.]+\)$/, (m) => Math.min(1, parseFloat(m) * 3.2) + ')')} 0.9px, transparent 1.3px)`
+      : `linear-gradient(${maj} 1px,transparent 1px),linear-gradient(90deg,${maj} 1px,transparent 1px),linear-gradient(${min} 1px,transparent 1px),linear-gradient(90deg,${min} 1px,transparent 1px)`;
+    $('v-desk').classList.toggle('lightboard', light);
+    applyView(); syncBgPanel();
+  }
+  function setBg(patch) {
+    board.view.bg = { ...bgOf(), ...patch }; bgLast = board.view.bg;
+    try { localStorage.setItem('na-desk-bg', JSON.stringify(bgLast)); } catch {}
+    paintBg(); saveView();
+  }
+  function syncBgPanel() {
+    const b = bgOf();
+    $('bgSwatches').querySelectorAll('[data-c]').forEach((x) => x.classList.toggle('on', x.dataset.c.toLowerCase() === b.color.toLowerCase()));
+    $('bgColor').value = b.color;
+    $('bgOpacity').value = Math.round(b.opacity * 100); $('bgOpacityOut').textContent = Math.round(b.opacity * 100) + '%';
+    $('bgGrid').querySelectorAll('[data-g]').forEach((x) => x.classList.toggle('on', x.dataset.g === b.grid));
+    $('bgSize').value = String(b.size); $('bgSize').disabled = $('bgGridOp').disabled = b.grid === 'none';
+    $('bgGridOp').value = Math.round(b.gridOpacity * 100); $('bgGridOpOut').textContent = Math.round(b.gridOpacity * 100) + '%';
+  }
+  $('bgSwatches').innerHTML = Object.entries(BG_PRESETS).map(([n, c]) => `<button data-c="${c}" title="${n}" style="background:${c}"></button>`).join('') +
+    '<label class="bg-custom" title="Choose any colour"><input type="color" id="bgColor"></label>';
+  $('bgSwatches').querySelectorAll('[data-c]').forEach((x) => x.onclick = () => setBg({ color: x.dataset.c }));
+  $('bgColor').addEventListener('input', (e) => setBg({ color: e.target.value }));
+  $('bgOpacity').addEventListener('input', (e) => setBg({ opacity: +e.target.value / 100 }));
+  $('bgGrid').querySelectorAll('[data-g]').forEach((x) => x.onclick = () => setBg({ grid: x.dataset.g }));
+  $('bgSize').addEventListener('change', (e) => setBg({ size: +e.target.value }));
+  $('bgGridOp').addEventListener('input', (e) => setBg({ gridOpacity: +e.target.value / 100 }));
+  $('bgReset').onclick = () => setBg({ ...BG_DEFAULT });
+  $('bgBtn').onclick = (e) => { e.stopPropagation(); const pnl = $('bgPanel'); pnl.hidden = !pnl.hidden; $('boardMenu').hidden = true; if (!pnl.hidden) syncBgPanel(); };
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#bgPanel, #bgBtn')) $('bgPanel').hidden = true; });
   const toWorld = (cx, cy) => { const r = vp.getBoundingClientRect(), { x, y, z } = view(); return { x: (cx - r.left - x) / z, y: (cy - r.top - y) / z }; };
   function zoomAt(nz, cx, cy, persist = true) {
     const r = vp.getBoundingClientRect(), v = view();
@@ -385,7 +437,7 @@ export function initDesk(ctx) {
         [['pen', 'Pen'], ['hl', 'Highlight'], ['erase', 'Erase']].map(([k, l]) => `<button class="sb${ink?.mode === k ? ' on' : ''}" data-ink-mode="${k}">${l}</button>`).join('') +
         (ink && ink.mode !== 'erase' ? Object.entries(PEN).map(([k, c]) => `<button class="sw${ink.color === k ? ' on' : ''}" data-pen="${k}" style="background:${c}" title="${k}"></button>`).join('') : '') +
         '<button data-a="clearpg" title="Remove every pen mark and highlight">Clear marks</button><i class="dv"></i>';
-      if (it.type === 'note') extra = Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
+      if (it.type === 'note') extra = `<span class="fsz" title="Margin inside every sticky note (your preference)">Margin<input type="number" class="npad" min="0" max="72" step="1" value="${Math.round(prefs.notePad * 0.75)}"><em>pt</em></span><i class="dv"></i>` + Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
       if (it.type === 'sheet') {
         extra = `<select data-a="paper" title="Paper size">${Object.entries(PAPER).map(([k, [n, w, h]]) => `<option value="${k}"${it.paper === k ? ' selected' : ''}>${n} (${w} × ${h})</option>`).join('')}<option value="custom"${!it.paper || it.paper === 'custom' ? ' selected' : ''}>Custom (${fmtIn(it.w)} × ${fmtIn(it.h)})</option></select>` +
           `<button data-a="orient" title="Portrait / landscape">${it.w > it.h ? 'Landscape' : 'Portrait'}</button><button data-a="zoom">Zoom to sheet</button>` +
@@ -423,7 +475,12 @@ export function initDesk(ctx) {
           listCmd(b.dataset.list); ed.dispatchEvent(new Event('input', { bubbles: true }));
         };
       });
-      const fsIn = bar.querySelector('.fsz input');
+      const np = bar.querySelector('.npad');
+      if (np) {
+        const setPad = () => { const pt = Math.min(72, Math.max(0, Math.round(+np.value || 0))); np.value = pt; setPref({ notePad: Math.round(pt / 0.75) }); updateLinks(); toast(`Sticky-note margins set to ${pt} pt on all notes`); };
+        np.addEventListener('change', setPad); np.addEventListener('keydown', (e) => { if (e.key === 'Enter') { setPad(); np.blur(); } });
+      }
+      const fsIn = bar.querySelector('.fsz input:not(.npad)');
       if (fsIn) {
         const setPt = (pt) => { pt = Math.min(144, Math.max(6, Math.round(pt * 2) / 2)); it.fs = Math.round(pt / 0.75 * 100) / 100; fsIn.value = pt; applyFs(it); if (it.type === 'text') remember({ fs: it.fs }); updateLinks(new Set([it.id])); save(); };
         fsIn.addEventListener('change', () => setPt(+fsIn.value || 12));
@@ -816,6 +873,7 @@ export function initDesk(ctx) {
     if (t === 'image') { $('deskImgInput').click(); return; }
     if (t === 'pdf') { $('deskPdfInput').click(); return; }
     if (t === 'link') { const r = $('linkRow'); r.hidden = !r.hidden; if (!r.hidden) $('linkInput').focus(); return; }
+    if (t === 'transcript') { const r = $('trRow'); r.hidden = !r.hidden; if (!r.hidden) $('trUrl').focus(); return; }
     setTool(t);
   });
   $('deskPdfInput').onchange = async () => { const files = [...$('deskPdfInput').files]; $('deskPdfInput').value = ''; const c = viewCenter(); for (const f of files) { const r = await uploadPdf(f); if (r) await placePdf(r, c.x, c.y); c.x += 60; c.y += 60; } };
@@ -1488,6 +1546,30 @@ export function initDesk(ctx) {
     const note = tmp.querySelector('.src')?.textContent.trim() || '';
     it.html = transcriptHtml(vid, lines, note); it.vid = vid;
   }
+  // Transcript tool: link + (optional) pasted text → video card and transcript sheet, tied together.
+  $('trCancel').onclick = () => { $('trRow').hidden = true; };
+  $('trGo').onclick = async () => {
+    const vid = ytId($('trUrl').value.trim()); if (!vid) { toast('Paste a YouTube link first.'); $('trUrl').focus(); return; }
+    const pasted = $('trText').value.trim();
+    let v = board.items.find((i) => i.type === 'video' && i.vid === vid);
+    if (!v) {
+      let d = { title: 'YouTube video', channel: '' }; try { d = await yt({ action: 'meta', id: vid }); } catch {}
+      const c = viewCenter(); v = addItem('video', c.x - 4 * IN, c.y, { vid, url: `https://www.youtube.com/watch?v=${vid}`, title: d.title, channel: d.channel });
+    }
+    if (pasted) {
+      const lines = parsePastedTranscript(pasted);
+      if (!lines.length) { toast('That text has no transcript lines in it.'); return; }
+      makeTranscriptSheet(v, lines, v.title);
+    } else {
+      toast('Fetching the transcript…');
+      let d = null; try { d = await yt({ action: 'transcript', id: vid }); } catch {}
+      if (!d?.lines?.length) { toast('YouTube blocked the automatic fetch. Paste the transcript text into the box and press Create.'); $('trText').focus(); return; }
+      makeTranscriptSheet(v, d.lines, d.title || v.title, d.auto);
+    }
+    $('trRow').hidden = true; $('trUrl').value = ''; $('trText').value = '';
+    const sh = byId([...sel][0]); if (sh?.collapsed) els.get(sh.id)?.querySelector('[data-act=more]')?.click(); // open it fully
+  };
+
   // Click a time: play the video on the board from that moment.
   function seekVideo(vid, t) {
     const v = board.items.find((i) => i.type === 'video' && i.vid === vid);
@@ -1692,6 +1774,8 @@ export function initDesk(ctx) {
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
+    if (!board.view.bg && bgLast.color) board.view.bg = { ...bgLast };
+    paintBg();
     hist = [snapshot()]; fut = []; clearTimeout(histT); histT = 0; updHist();
     applyView(); loadLib(); renderTabs(true);
     setSaved('Saved');
