@@ -573,6 +573,8 @@ body.previewing #preview{display:block}
 .bg-reset{all:unset;cursor:pointer;margin-top:8px;font-size:13px;color:var(--muted)}
 .bg-reset:hover{color:var(--ink)}
 #v-desk.lightboard .tx-body{color:#1E2836}
+/* Alt-drag box (locked pieces only) */
+.desk-marquee.locked-only{background-color:rgba(233,196,106,.08)!important}
 /* Groups */
 .group-box{position:absolute;border:calc(1.5px * var(--inv,1)) dashed #3B9BFF;border-radius:calc(4px * var(--inv,1));pointer-events:none;z-index:99998}
 .group-box[hidden]{display:none}

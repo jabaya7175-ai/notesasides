@@ -558,9 +558,10 @@ export function initDesk(ctx) {
     });
   }
   function toggleLock(on) {
+    const n = sel.size;
     sel.forEach((id) => { const it = byId(id); if (!it) return; if (on) it.locked = true; else delete it.locked; place(it); if (it.type === 'line') paintLine(it); });
     if (on) { document.activeElement?.blur?.(); setSel([]); } else renderSelBar();
-    save(); toast(on ? 'Locked. Use the lock at its bottom-left corner to unlock.' : 'Unlocked');
+    save(); toast(on ? (n > 1 ? `Locked ${n} pieces. To unlock several, Alt-drag a box over them.` : 'Locked. Use the lock at its bottom-left corner to unlock.') : (n > 1 ? `Unlocked ${n} pieces` : 'Unlocked'));
   }
   function removeSelected() {
     if (selLink) { board.links = board.links.filter((l) => l.id !== selLink); selLink = null; cleanAnchors(); drawLinks(); renderSelBar(); save(); return; }
@@ -969,8 +970,10 @@ export function initDesk(ctx) {
     if (itEl && byId(itEl.dataset.id)?.locked && tool !== 'string') {
       const it = byId(itEl.dataset.id);
       if (e.target.closest('.unlock')) { // the only way to unlock
-        e.preventDefault(); eatMouse = true; delete it.locked; place(it); if (it.type === 'line') paintLine(it);
-        select(it.id); save(); toast('Unlocked'); return;
+        e.preventDefault(); eatMouse = true;
+        const members = it.group ? groupIds(it.group).map(byId) : [it];
+        members.forEach((m) => { delete m.locked; place(m); if (m.type === 'line') paintLine(m); });
+        pick(it); save(); toast(members.length > 1 ? `Unlocked the group (${members.length} pieces)` : 'Unlocked'); return;
       }
       // Text stays selectable (to highlight or tie a note); anything else acts like the board.
       if (e.target.closest('a.ts')) return;
@@ -1021,7 +1024,8 @@ export function initDesk(ctx) {
     e.preventDefault();
     if (!e.shiftKey) { select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); } }
     const box = document.createElement('div'); box.className = 'desk-marquee'; vp.appendChild(box);
-    drag = { mode: 'marquee', box, sx: e.clientX, sy: e.clientY, base: e.shiftKey ? [...sel] : [], moved: false }; vp.setPointerCapture(e.pointerId);
+    if (e.altKey) box.classList.add('locked-only');
+    drag = { mode: 'marquee', box, sx: e.clientX, sy: e.clientY, base: e.shiftKey ? [...sel] : [], lockedOnly: e.altKey, moved: false }; vp.setPointerCapture(e.pointerId);
   }
   let spaceDown = false;
   addEventListener('keydown', (e) => {
@@ -1048,7 +1052,7 @@ export function initDesk(ctx) {
       const r = vp.getBoundingClientRect(), x1 = Math.min(e.clientX, drag.sx), y1 = Math.min(e.clientY, drag.sy), x2 = Math.max(e.clientX, drag.sx), y2 = Math.max(e.clientY, drag.sy);
       Object.assign(drag.box.style, { left: x1 - r.left + 'px', top: y1 - r.top + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' });
       const a = toWorld(x1, y1), b = toWorld(x2, y2);
-      const hit = withGroups(board.items.filter((i) => !i.locked && i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id));
+      const hit = withGroups(board.items.filter((i) => (drag.lockedOnly ? i.locked : !i.locked) && i.x < b.x && i.x + i.w > a.x && i.y < b.y && i.y + i.h > a.y).map((i) => i.id));
       setSel([...new Set([...drag.base, ...hit])]);
     }
     else if (drag.mode === 'resize') {
@@ -1745,10 +1749,15 @@ export function initDesk(ctx) {
     const m = $('boardMenu'); if (!m.hidden) { m.hidden = true; return; }
     const boards = await listBoards();
     m.innerHTML = boards.map((b) => `<button data-b="${b.id}" class="${board?.id === b.id ? 'cur' : ''}">${escH(b.title)}<small>${new Date(b.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></button>`).join('') +
-      '<hr><button data-new="1">+ New board</button>' + (board ? '<button data-delb="1" class="danger">Delete this board</button>' : '');
+      '<hr><button data-new="1">+ New board</button>' + (board && board.items.some((i) => i.locked) ? '<button data-unlockall="1">Unlock every piece on this board</button>' : '') + (board ? '<button data-delb="1" class="danger">Delete this board</button>' : '');
     m.hidden = false;
     m.querySelectorAll('[data-b]').forEach((b) => b.onclick = () => { m.hidden = true; if (!tabIds.includes(b.dataset.b)) { tabIds.push(b.dataset.b); saveTabs(); } location.hash = `#/desk/${b.dataset.b}`; });
     m.querySelector('[data-new]').onclick = async () => { m.hidden = true; const id = await newBoard(); if (id) { tabIds.push(id); saveTabs(); location.hash = `#/desk/${id}`; } };
+    m.querySelector('[data-unlockall]')?.addEventListener('click', () => {
+      m.hidden = true; let n = 0;
+      board.items.forEach((i) => { if (i.locked) { delete i.locked; place(i); if (i.type === 'line') paintLine(i); n++; } });
+      save(); toast(`Unlocked ${n} piece${n === 1 ? '' : 's'}`);
+    });
     m.querySelector('[data-delb]')?.addEventListener('click', async () => {
       m.hidden = true;
       if (!(await confirmBox('Delete this board?', `<p>“${escH(board.title)}” and everything on it will be deleted. Library notes and images stay.</p>`, 'Delete'))) return;
