@@ -939,6 +939,7 @@ export function initDesk(ctx) {
   vp.addEventListener('pointerdown', (e) => {
     eatMouse = false; $('deskAsk').hidden = true;
     const hitLocked = e.target.closest?.('.it.locked'); activeLocked = hitLocked ? hitLocked.dataset.id : null;
+    world.querySelectorAll('.it.tapped').forEach((n) => n.classList.remove('tapped')); hitLocked?.classList.add('tapped');
     if (e.button === 1) { e.preventDefault(); startPan(e); return; }
     if (e.button !== 0) return;
     const pinEl = e.target.closest('.pin[data-end]');
@@ -1001,10 +1002,10 @@ export function initDesk(ctx) {
       if (e.target.closest('a.ts')) return;
       if (e.target.matches('.page, .pdf-scroll, .nt-body, .q-body')) return; // its scroll bar
       if (e.target.closest('[contenteditable], .textLayer span') && !e.shiftKey) { if (sel.size) setSel([]); return; }
-      document.activeElement?.blur?.(); if (spaceDown) startPan(e); else startMarquee(e); return;
+      document.activeElement?.blur?.(); bgDrag(e); return;
     }
     if (itEl) {
-      const it = byId(itEl.dataset.id);
+      const it = byId(itEl.dataset.id), wasSel = sel.has(it.id) && sel.size === 1;
       if (tool === 'string') {
         e.preventDefault(); eatMouse = true;
         if (!tieFrom) { tieFrom = it.id; itEl.classList.add('tie-from'); }
@@ -1035,14 +1036,27 @@ export function initDesk(ctx) {
       if (ed && document.activeElement === ed && !e.altKey) return; // already writing here: native text behaviour
       e.preventDefault(); eatMouse = true;
       const group = [...sel].map(byId).filter((g) => g && !g.locked).map((g) => ({ it: g, x: g.x, y: g.y, el: els.get(g.id) }));
-      drag = { mode: 'move', it, el: itEl, ed, group, sx: e.clientX, sy: e.clientY, moved: false };
+      drag = { mode: 'move', it, el: itEl, ed, group, sx: e.clientX, sy: e.clientY, moved: false, wasSel, touch: e.pointerType === 'touch' };
       vp.setPointerCapture(e.pointerId); return;
     }
     // Background: drag a box to select everything it touches (Shift adds). Space-drag pans.
     document.activeElement?.blur?.();
-    if (spaceDown) { startPan(e); return; }
-    startMarquee(e);
+    if (touchUI) $('v-desk').classList.remove('lib-open');
+    bgDrag(e);
   });
+  // Touch (Freeform-style): one finger pans; touch and hold, then drag, draws a selection box.
+  function bgDrag(e) {
+    if (spaceDown) { startPan(e); return; }
+    if (e.pointerType !== 'touch') { startMarquee(e); return; }
+    select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); }
+    startPan(e);
+    const at = { clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, shiftKey: false, altKey: false, preventDefault() {} };
+    drag.lp = setTimeout(() => {
+      if (!drag || drag.mode !== 'pan' || drag.panMoved) return;
+      view().x = drag.x; view().y = drag.y; touchView(); vp.classList.remove('panning'); drag = null;
+      startMarquee(at); navigator.vibrate?.(10);
+    }, 450);
+  }
   function startMarquee(e) {
     e.preventDefault();
     if (!e.shiftKey) { select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); } }
@@ -1068,7 +1082,7 @@ export function initDesk(ctx) {
       drag.moved = true;
       if (drag.mode === 'move') { drag.group.forEach((g) => g.el?.classList.add('dragging')); if (world.contains(document.activeElement)) document.activeElement.blur(); }
     }
-    if (drag.mode === 'pan') { view().x = drag.x + dx; view().y = drag.y + dy; touchView(); }
+    if (drag.mode === 'pan') { if (!drag.panMoved && Math.hypot(dx, dy) > 8) { drag.panMoved = true; clearTimeout(drag.lp); } view().x = drag.x + dx; view().y = drag.y + dy; touchView(); }
     else if (drag.mode === 'zoomdrag') { zoomAt(drag.z0 * Math.exp(dx * 0.008), drag.sx, drag.sy, false); }
     else if (drag.mode === 'move') { drag.group.forEach((g) => { g.it.x = Math.round(g.x + dx / z); g.it.y = Math.round(g.y + dy / z); touchItem(g.it.id); }); }
     else if (drag.mode === 'marquee') {
@@ -1165,7 +1179,7 @@ export function initDesk(ctx) {
   });
   const endDrag = (e) => {
     if (!drag) return;
-    const d = drag; drag = null;
+    const d = drag; drag = null; clearTimeout(d.lp);
     vp.classList.remove('panning');
     d.group?.forEach((g) => g.el?.classList.remove('dragging'));
     d.box?.remove();
@@ -1196,7 +1210,7 @@ export function initDesk(ctx) {
       const inGroup = d.it.group && selGroup() === d.it.group;
       if (!inGroup) {
         if (sel.size > 1) select(d.it.id); // a plain click inside a multi-selection picks that one piece
-        if (d.ed) placeCaret(d.ed, e.clientX, e.clientY);
+        if (d.ed && (!d.touch || d.wasSel)) placeCaret(d.ed, e.clientX, e.clientY); // on touch: tap selects, tap again types
       }
     }
     if (d.mode === 'zoomdrag') { if (!d.moved) stepZoom(d.out || e?.altKey ? -1 : 1, d.sx, d.sy); else saveView(); return; }
@@ -1261,6 +1275,47 @@ export function initDesk(ctx) {
     const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it && !it.locked) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
   });
+
+  /* ------------------------------------------------------------ touch: pinch to zoom, two fingers to pan */
+  const touchUI = matchMedia('(any-pointer: coarse)').matches;
+  if (touchUI) {
+    $('v-desk').classList.add('touch');
+    vp.parentElement.appendChild($('deskTools')); // tools float along the bottom, Freeform-style
+    const histRow = document.querySelector('#deskTools .hist-row'), zoomRow = document.querySelector('#deskTools .zoom-row');
+    histRow.classList.add('float-bl'); zoomRow.classList.add('float-br');
+    vp.parentElement.append(histRow, zoomRow); // Back/Forward bottom-left, zoom bottom-right
+    $('libToggle').onclick = () => $('v-desk').classList.toggle('lib-open');
+    ['gesturestart', 'gesturechange'].forEach((t) => document.addEventListener(t, (e) => { if ($('v-desk').classList.contains('on')) e.preventDefault(); }));
+  }
+  const tps = new Map(); let pinch = null;
+  const deskMain = vp.parentElement;
+  deskMain.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' || !vp.contains(e.target)) return;
+    tps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tps.size < 2) return;
+    e.stopPropagation(); e.preventDefault();
+    if (drag) { // a second finger turns whatever the first was doing into a pinch
+      clearTimeout(drag.lp); drag.box?.remove(); vp.classList.remove('panning');
+      if (drag.mode === 'move') drag.group?.forEach((g) => { g.el?.classList.remove('dragging'); g.it.x = g.x; g.it.y = g.y; touchItem(g.it.id); });
+      if (drag.mode === 'pan') { view().x = drag.x; view().y = drag.y; }
+      drag = null;
+    }
+    const [a, b] = [...tps.values()];
+    pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, v0: { ...view() } };
+    hideFmt();
+  }, true);
+  deskMain.addEventListener('pointermove', (e) => {
+    if (!tps.has(e.pointerId)) return;
+    tps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!pinch || tps.size < 2) return;
+    e.stopPropagation();
+    const [a, b] = [...tps.values()], d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const r = vp.getBoundingClientRect(), v0 = pinch.v0, z = Math.min(MAX_Z, Math.max(MIN_Z, v0.z * d / pinch.d0));
+    const wx = (pinch.m0.x - r.left - v0.x) / v0.z, wy = (pinch.m0.y - r.top - v0.y) / v0.z;
+    view().z = z; view().x = m.x - r.left - wx * z; view().y = m.y - r.top - wy * z; touchView();
+  }, true);
+  const lift = (e) => { if (!tps.has(e.pointerId)) return; tps.delete(e.pointerId); if (pinch) { e.stopPropagation(); if (tps.size < 2) { pinch = null; saveView(); } } };
+  deskMain.addEventListener('pointerup', lift, true); deskMain.addEventListener('pointercancel', lift, true);
 
   /* ------------------------------------------------------------ drop: from sidebar (pointer drag), files */
   function dropData(d, x, y) {

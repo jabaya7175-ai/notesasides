@@ -622,3 +622,56 @@ body.previewing #preview{display:block}
 .desk-hint{position:absolute;top:34px;left:50%;transform:translateX(-50%);font-size:15px;font-style:italic;color:#E9E2D2;background:rgba(20,28,37,.8);padding:4px 12px;border-radius:6px;pointer-events:none}
 .desk-hint:empty{display:none}
 @media (max-width:800px){ .desk{grid-template-columns:1fr} .desk-side{display:none} .tb-center{max-width:calc(100% - 120px)} .pubname{display:none} }
+
+/* ================================================================ iPad / touch (Freeform-style) */
+.lib-toggle{display:none}
+#v-desk.touch .lib-toggle{all:unset;display:inline-flex;align-items:center;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line);color:var(--ink);font-size:16px;cursor:pointer;margin-right:4px}
+#v-desk.touch.lib-open .lib-toggle{background:var(--surface);border-color:#E9C46A}
+#v-desk.touch .pubname{display:none}
+#v-desk.touch .topbar{padding-top:env(safe-area-inset-top)}
+#v-desk.touch .desk{position:relative;grid-template-columns:minmax(0,1fr)}
+#v-desk.touch .desk > .desk-main{grid-column:1;grid-row:1}
+#v-desk.touch .desk-side{position:absolute;left:0;top:0;bottom:0;width:min(340px,85vw);z-index:30;transform:translateX(-102%);transition:transform .25s ease;box-shadow:12px 0 40px rgba(0,0,0,.45)}
+#v-desk.touch.lib-open .desk-side{transform:none}
+#v-desk.touch .desk-main{grid-template-columns:0 minmax(0,1fr);grid-template-rows:0 minmax(0,1fr)}
+#v-desk.touch .ruler{display:none}
+#v-desk.touch .desk-vp{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#v-desk.touch .desk-lib,#v-desk.touch .desk-side{-webkit-touch-callout:none}
+/* Floating toolbar along the bottom */
+#v-desk.touch .desk-toolbox{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:4px;padding:6px;background:rgba(28,36,46,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:20px;box-shadow:0 14px 36px rgba(0,0,0,.5);max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
+#v-desk.touch .desk-toolbox::-webkit-scrollbar{display:none}
+#v-desk.touch .desk-toolbox .desk-h{display:none}
+#v-desk.touch .tool-grid{display:flex;gap:2px}
+#v-desk.touch .tool-grid .tbtn{flex:none;width:46px;height:46px;padding:0;border:none;border-radius:12px;gap:0;justify-content:center}
+#v-desk.touch .tool-grid .tbtn svg{width:23px;height:23px}
+#v-desk.touch .tool-grid .tbtn .lbl{display:none}
+#v-desk.touch .tool-grid .tbtn.on{background:rgba(233,196,106,.16);color:#E9C46A}
+
+#v-desk.touch .float-bl,#v-desk.touch .float-br{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));z-index:20;display:flex;align-items:center;gap:2px;margin:0;padding:5px;background:rgba(28,36,46,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 14px 36px rgba(0,0,0,.5)}
+#v-desk.touch .float-bl{left:16px}
+#v-desk.touch .float-br{right:16px}
+#v-desk.touch .float-bl .tbtn{border:none;width:44px;height:44px;justify-content:center;padding:0;border-radius:12px}
+#v-desk.touch .float-bl .tbtn .lbl{display:none}
+#v-desk.touch .float-bl .tbtn svg{width:22px;height:22px}
+#v-desk.touch #zoomIn,#v-desk.touch #zoomOut{display:none}
+#v-desk.touch .float-br .zoom{min-width:50px;font-size:15px;text-align:center}
+#v-desk.touch .float-br #zoomFit{height:44px;padding:0 12px;border-radius:12px}
+@media (max-width:1100px){#v-desk.touch .desk-toolbox{bottom:calc(76px + env(safe-area-inset-bottom))}#v-desk.touch .desk-hint{bottom:calc(150px + env(safe-area-inset-bottom))}}
+#v-desk.touch .link-row,#v-desk.touch .tr-row{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(460px,92vw);margin:0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 36px rgba(0,0,0,.5);z-index:25}
+/* Options float at the top; bigger touch targets everywhere */
+#v-desk.touch .desk-sel{top:12px;bottom:auto;border-radius:14px;padding:6px 8px;max-width:calc(100% - 24px);overflow-x:auto;flex-wrap:nowrap}
+#v-desk.touch .desk-sel button{padding:10px 12px;font-size:16px}
+#v-desk.touch .desk-sel .sw{width:26px;height:26px}
+#v-desk.touch .desk-sel em{display:none}
+#v-desk.touch .desk-hint{top:auto;bottom:calc(98px + env(safe-area-inset-bottom))}
+#v-desk.touch .desk-fmt{padding:6px 8px;border-radius:14px}
+#v-desk.touch .desk-fmt button{min-width:38px;height:38px;line-height:38px;font-size:17px}
+#v-desk.touch .desk-fmt .hlsw{width:28px;min-width:28px;height:28px}
+#v-desk.touch .it > .rz{width:calc(16px * var(--inv,1));height:calc(16px * var(--inv,1));border-radius:50%}
+#v-desk.touch .it.text > .rz{width:calc(12px * var(--inv,1));height:calc(30px * var(--inv,1));border-radius:99px}
+#v-desk.touch .it > .unlock{width:calc(32px * var(--inv,1));height:calc(32px * var(--inv,1))}
+#v-desk.touch .it.locked.tapped > .unlock{opacity:1;pointer-events:auto}
+#v-desk.touch .desk-tabs button{padding:14px 4px}
+#v-desk.touch .btab{height:40px}
+#v-desk.touch .desk-ask button,#v-desk.touch .bg-panel button{padding:10px 14px}
+#v-desk.touch .board-menu button{padding:12px 16px}
