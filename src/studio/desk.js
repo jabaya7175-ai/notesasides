@@ -844,11 +844,45 @@ export function initDesk(ctx) {
     });
     return out;
   }
+  // The parts of rect r (one line of text) not covered by any of the cuts on the same line.
+  function clipOut(r, cuts) {
+    let parts = [r];
+    cuts.forEach((c) => {
+      const vo = Math.min(r[1] + r[3], c[1] + c[3]) - Math.max(r[1], c[1]);
+      if (vo < Math.min(r[3], c[3]) * 0.5) return;
+      parts = parts.flatMap((a) => {
+        const L = Math.max(a[0], c[0]), R = Math.min(a[0] + a[2], c[0] + c[2]); if (R <= L) return [a];
+        const out = []; if (L > a[0] + 0.5) out.push([a[0], a[1], L - a[0], a[3]]); if (a[0] + a[2] > R + 0.5) out.push([R, a[1], a[0] + a[2] - R, a[3]]); return out;
+      });
+    });
+    return parts;
+  }
+  // Older boards may hold stacked marks: the newest wins where they overlap.
+  function flattenMarks(it) {
+    Object.keys(it.marks || {}).forEach((p) => {
+      const covered = [], out = [];
+      [...it.marks[p]].reverse().forEach((m) => {
+        if (m.t !== 'box') { out.unshift(m); return; }
+        const r = m.r.flatMap((x) => clipOut(x, covered)).filter((x) => x[2] > 0.5);
+        covered.push(...m.r); if (r.length) out.unshift({ ...m, r });
+      });
+      it.marks[p] = out;
+    });
+  }
   const overlaps = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
   function pdfFormat(b) {
     const it = byId(fmtEd.closest('.it').dataset.id), byPage = pdfSelRects(it, fmtRange); if (!byPage.size) return;
     it.marks ||= {};
-    const add = (m) => byPage.forEach((r, p) => (it.marks[p] ||= []).push({ ...m, r }));
+    // Apple Books-style: a passage carries one mark. A new highlight or underline replaces any it
+    // overlaps and absorbs the rest of them, so marks never stack and colours never mix.
+    const add = (m) => byPage.forEach((rects, p) => {
+      const keep = [], merged = [...rects];
+      (it.marks[p] || []).forEach((o) => {
+        if (o.t !== 'box' || !o.r.some((r) => rects.some((q) => overlaps(r, q)))) { keep.push(o); return; }
+        o.r.forEach((r) => merged.push(...clipOut(r, rects)));
+      });
+      it.marks[p] = [...keep, { ...m, r: merged }];
+    });
     if (b.dataset.hl) add({ t: 'box', c: b.dataset.hl });
     else if (b.dataset.cmd === 'underline') add({ t: 'box', c: '#C0392B', u: 1 });
     else if (b.dataset.cmd === 'clear') byPage.forEach((rects, p) => { it.marks[p] = (it.marks[p] || []).filter((m) => m.t !== 'box' || !m.r.some((r) => rects.some((q) => overlaps(r, q)))); });
@@ -936,7 +970,7 @@ export function initDesk(ctx) {
     ];
   }
   function pdfMarkAt(e) {
-    const pg = e.target.closest?.('.pdf-pg'); if (!pg) return null;
+    const pg = document.elementsFromPoint(e.clientX, e.clientY).map((n) => n.closest?.('.pdf-pg')).find(Boolean); if (!pg) return null;
     const it = byId(pg.closest('.it')?.dataset.id), p = +pg.dataset.p; if (!it?.marks?.[p]) return null;
     const sr = pg.querySelector('.marks').getBoundingClientRect();
     const x = (e.clientX - sr.left) / sr.width * 1000, y = (e.clientY - sr.top) / sr.height * markH(it, p);
@@ -959,6 +993,15 @@ export function initDesk(ctx) {
       { label: 'Clear every highlight and underline on this PDF', danger: true, act: () => { Object.keys(it.marks).forEach((q) => { it.marks[q] = it.marks[q].filter((x) => x.t !== 'box'); }); renderMarks(it); save(); } },
     ];
   }
+  // Clicking (or tapping) a highlight on a PDF you're reading opens its options, as in Apple Books.
+  let downAt = null;
+  vp.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY, t: Date.now() }; }, true);
+  vp.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 4 || Date.now() - downAt.t > 600) return;
+    const s = getSelection(); if (s.rangeCount && !s.isCollapsed) return;
+    const pm = pdfMarkAt(e); if (!pm || ink || !(sel.has(pm.it.id) || pm.it.locked)) return;
+    openMenu(e.clientX + 2, e.clientY + 8, pdfMarkMenu(pm));
+  });
   function markMenu(e) {
     const pm = pdfMarkAt(e); if (pm) { openMenu(e.clientX, e.clientY, pdfMarkMenu(pm)); return true; }
     const run = textRun(e.target); if (run) { openMenu(e.clientX, e.clientY, textMarkMenu(run)); return true; }
@@ -2213,6 +2256,7 @@ export function initDesk(ctx) {
     board.items.forEach((i) => { if (i.type === 'sheet' && (i.collapsible || /^Transcript:/.test(i.title || ''))) upgradeTranscript(i); });
     board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
     board.items.forEach((i) => { if (i.rot) i.rot = 0; }); // every piece sits square
+    board.items.forEach((i) => { if (i.type === 'pdf' && i.marks) flattenMarks(i); });
     board.items.forEach((i) => { if (i.html && /rgb\((246, 226, 122|191, 227, 168|244, 182, 200|184, 214, 242)\)/.test(i.html)) OLD_HL_RGB.forEach(([a, b]) => { i.html = i.html.split(`rgb(${a})`).join(`rgb(${b})`); }); });
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
