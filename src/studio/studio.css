@@ -496,7 +496,7 @@ body.previewing #preview{display:block}
 .it.pdf.sel .textLayer span{cursor:text}
 .pdf-pg .textLayer ::selection{background:rgba(46,109,180,.3)}
 .it.inking .textLayer{pointer-events:none}
-.pdf-pg .marks{z-index:1}
+.pdf-pg .marks{z-index:1;mix-blend-mode:multiply} /* ink, not paint: the printed text stays dark */
 .pdf-pg .marks.erasing rect{pointer-events:all}
 .desk-fmt.pdfmode [data-cmd=bold],.desk-fmt.pdfmode [data-cmd=italic]{display:none}
 /* Back / Forward */

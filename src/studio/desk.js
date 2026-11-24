@@ -787,7 +787,13 @@ export function initDesk(ctx) {
   });
 
   /* ------------------------------------------------------------ formatting bar: highlight, underline, + note */
-  const HL = { yellow: '#F6E27A', green: '#BFE3A8', pink: '#F4B6C8', blue: '#B8D6F2' };
+  // Highlighter colours. Text pieces paint them behind the letters; PDFs blend them in
+  // (multiply), so the printed text stays as dark as it was. Older, paler marks are upgraded.
+  const HL = { yellow: '#FFD23F', green: '#8BD96E', pink: '#FF8FBA', blue: '#7DBDFF' };
+  const OLD_HL = { '#F6E27A': HL.yellow, '#BFE3A8': HL.green, '#F4B6C8': HL.pink, '#B8D6F2': HL.blue };
+  const OLD_HL_RGB = [['246, 226, 122', '255, 210, 63'], ['191, 227, 168', '139, 217, 110'], ['244, 182, 200', '255, 143, 186'], ['184, 214, 242', '125, 189, 255']];
+  const hlc = (c) => OLD_HL[String(c).toUpperCase()] || c;
+  const rgbHex = (c) => { const m = String(c).match(/\d+/g); return m && m.length >= 3 ? '#' + m.slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join('').toUpperCase() : String(c).toUpperCase(); };
   const fmt = $('deskFmt');
   fmt.innerHTML = Object.entries(HL).map(([k, c]) => `<button class="hlsw" data-hl="${c}" title="Highlight ${k}" style="background:${c}"></button>`).join('') +
     '<i class="dv"></i><button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button><button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button><button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>' +
@@ -846,8 +852,12 @@ export function initDesk(ctx) {
     if (b.dataset.hl) add({ t: 'box', c: b.dataset.hl });
     else if (b.dataset.cmd === 'underline') add({ t: 'box', c: '#C0392B', u: 1 });
     else if (b.dataset.cmd === 'clear') byPage.forEach((rects, p) => { it.marks[p] = (it.marks[p] || []).filter((m) => m.t !== 'box' || !m.r.some((r) => rects.some((q) => overlaps(r, q)))); });
-    else if (b.dataset.cmd === 'note') {
-      const id = uid(); add({ t: 'anc', id });
+    else if (b.dataset.cmd === 'note') { pdfNote(it, byPage); return; } else return;
+    getSelection().removeAllRanges(); hideFmt(); renderMarks(it); save();
+  }
+  function pdfNote(it, byPage) {
+    {
+      const id = uid(); it.marks ||= {}; byPage.forEach((r, p) => (it.marks[p] ||= []).push({ t: 'anc', id, r }));
       const [p0, r0] = [...byPage.entries()][0];
       const sr = pageEl(it, p0).querySelector('.marks').getBoundingClientRect();
       const at = toWorld(sr.left, sr.top + r0[0][1] / markH(it, p0) * sr.height);
@@ -856,9 +866,103 @@ export function initDesk(ctx) {
       const note = addItem('note', it.x + it.w + 72 + nw / 2, at.y - 24 + nh / 2, { color: 'yellow', rot: 0 });
       board.links.push({ id: uid(), a: note.id, b: it.id, anc: id });
       drawLinks(); save(); els.get(note.id).querySelector('.nt-body').focus({ preventScroll: true });
-      return;
-    } else return;
-    getSelection().removeAllRanges(); hideFmt(); renderMarks(it); save();
+    }
+  }
+
+  /* Right-click any part of a highlight or underline: recolour it, switch it, tie a note, or clear it. */
+  const hlName = (c) => Object.keys(HL).find((k) => HL[k] === hlc(rgbHex(c)));
+  const cap = (k) => k[0].toUpperCase() + k.slice(1);
+  const markKind = (n) => {
+    if (n?.nodeType !== 1) return null;
+    const bg = n.style?.backgroundColor;
+    if (bg && bg !== 'transparent' && !/rgba\(0, 0, 0, 0\)/.test(bg)) return 'hl';
+    if (n.tagName === 'U' || /underline/.test(n.style?.textDecorationLine || n.style?.textDecoration || '')) return 'ul';
+    return null;
+  };
+  // The whole run of touching marks of one kind (and colour) around the clicked one.
+  function textRun(target) {
+    const ed = target.closest?.('[contenteditable]'); if (!ed || !world.contains(ed)) return null;
+    let hit = null; for (let n = target.nodeType === 1 ? target : target.parentElement; n && n !== ed; n = n.parentElement) if (markKind(n)) hit = n; // outermost
+    if (!hit) return null;
+    const kind = markKind(hit), key = kind === 'hl' ? rgbHex(hit.style.backgroundColor) : 'u';
+    const like = (n) => markKind(n) === kind && (kind !== 'hl' || rgbHex(n.style.backgroundColor) === key);
+    const all = [...ed.querySelectorAll('*')].filter((n) => like(n) && !(n.parentElement && n.parentElement !== ed && ed.contains(n.parentElement) && like(n.parentElement)));
+    const touching = (a, b) => { const r = document.createRange(); r.setStartAfter(a); r.setEndBefore(b); return r.toString() === ''; };
+    let i = all.indexOf(hit); if (i < 0) return null;
+    let a = i, z = i;
+    while (a > 0 && touching(all[a - 1], all[a])) a--;
+    while (z < all.length - 1 && touching(all[z], all[z + 1])) z++;
+    const els_ = all.slice(a, z + 1), range = document.createRange();
+    range.setStartBefore(els_[0]); range.setEndAfter(els_.at(-1));
+    return { ed, kind, color: kind === 'hl' ? key : null, els: els_, range };
+  }
+  const unwrap = (n) => { if (n.tagName === 'SPAN' && !n.getAttribute('style')?.trim() || n.tagName === 'U') { n.replaceWith(...n.childNodes); } };
+  function stripMarks(range, kinds) {
+    const root = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const nodes = [root, ...root.querySelectorAll('*')].filter((n) => range.intersectsNode(n) && root.closest('[contenteditable]')?.contains(n) && n.getAttribute?.('contenteditable') == null);
+    nodes.forEach((n) => {
+      if (kinds.includes('hl') && markKind(n) === 'hl') n.style.backgroundColor = '';
+      if (kinds.includes('ul') && n.style) { n.style.textDecoration = ''; n.style.textDecorationLine = ''; }
+      if (n.getAttribute('style') === '') n.removeAttribute('style');
+    });
+    nodes.reverse().forEach((n) => { if ((n.tagName === 'U' && kinds.includes('ul')) || (n.tagName === 'SPAN' && !n.attributes.length)) unwrap(n); });
+  }
+  const changed = (ed) => { ed.dispatchEvent(new Event('input', { bubbles: true })); getSelection().removeAllRanges(); hideFmt(); };
+  function runCmd(run, cmd) { // execCommand on the run, even in locked or read-only pieces
+    const ed = run.ed, locked = ed.getAttribute('contenteditable') === 'false';
+    if (locked) ed.contentEditable = 'true';
+    const s = getSelection(); s.removeAllRanges(); s.addRange(run.range);
+    document.execCommand('styleWithCSS', false, true); document.execCommand(cmd);
+    if (locked) ed.contentEditable = 'false';
+    changed(ed);
+  }
+  function textMarkMenu(run) {
+    const ed = run.ed, colours = Object.keys(HL).map((k) => ({ label: cap(k), checked: run.kind === 'hl' && hlName(run.color) === k, act: () => {
+      if (run.kind === 'hl') run.els.forEach((n) => { n.style.backgroundColor = HL[k]; });
+      else { const sp = document.createElement('span'); sp.style.backgroundColor = HL[k]; sp.appendChild(run.range.extractContents()); run.range.insertNode(sp); }
+      changed(ed);
+    } }));
+    const hasUl = run.kind === 'ul' || [...ed.querySelectorAll('u, [style*="underline"]')].some((n) => run.range.intersectsNode(n));
+    return [
+      { label: run.kind === 'hl' ? 'Highlight colour' : 'Highlight it', sub: colours },
+      run.kind === 'hl' ? { label: 'Remove highlight', act: () => { stripMarks(run.range, ['hl']); changed(ed); } } : null,
+      hasUl ? { label: 'Remove underline', act: () => { stripMarks(run.range, ['ul']); changed(ed); } } : { label: 'Underline it', act: () => runCmd(run, 'underline') },
+      '-',
+      { label: 'Tie a note to this passage', act: () => { fmtEd = ed; fmtRange = run.range; noteOnSelection(); } },
+      { label: 'Copy text', act: () => navigator.clipboard?.writeText(run.range.toString()) },
+      '-',
+      { label: 'Clear highlight and underline', act: () => { stripMarks(run.range, ['hl', 'ul']); changed(ed); } },
+      { label: 'Clear every highlight in this piece', danger: true, act: () => { const r = document.createRange(); r.selectNodeContents(ed); stripMarks(r, ['hl', 'ul']); changed(ed); } },
+    ];
+  }
+  function pdfMarkAt(e) {
+    const pg = e.target.closest?.('.pdf-pg'); if (!pg) return null;
+    const it = byId(pg.closest('.it')?.dataset.id), p = +pg.dataset.p; if (!it?.marks?.[p]) return null;
+    const sr = pg.querySelector('.marks').getBoundingClientRect();
+    const x = (e.clientX - sr.left) / sr.width * 1000, y = (e.clientY - sr.top) / sr.height * markH(it, p);
+    const list = it.marks[p];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i]; if (m.t !== 'box') continue;
+      if (m.r.some((r) => x >= r[0] - 1 && x <= r[0] + r[2] + 1 && y >= r[1] - 1 && y <= r[1] + r[3] + 2)) return { it, p, m, i };
+    }
+    return null;
+  }
+  function pdfMarkMenu({ it, p, m }) {
+    const done = () => { renderMarks(it, p); save(); };
+    return [
+      { label: m.u ? 'Highlight it instead' : 'Highlight colour', sub: Object.keys(HL).map((k) => ({ label: cap(k), checked: !m.u && hlName(m.c) === k, act: () => { m.c = HL[k]; delete m.u; done(); } })) },
+      m.u ? null : { label: 'Underline it instead', act: () => { m.c = '#C0392B'; m.u = 1; done(); } },
+      '-',
+      { label: 'Tie a note to this passage', act: () => pdfNote(it, new Map([[p, m.r]])) },
+      '-',
+      { label: m.u ? 'Clear underline' : 'Clear highlight', act: () => { it.marks[p].splice(it.marks[p].indexOf(m), 1); done(); } },
+      { label: 'Clear every highlight and underline on this PDF', danger: true, act: () => { Object.keys(it.marks).forEach((q) => { it.marks[q] = it.marks[q].filter((x) => x.t !== 'box'); }); renderMarks(it); save(); } },
+    ];
+  }
+  function markMenu(e) {
+    const pm = pdfMarkAt(e); if (pm) { openMenu(e.clientX, e.clientY, pdfMarkMenu(pm)); return true; }
+    const run = textRun(e.target); if (run) { openMenu(e.clientX, e.clientY, textMarkMenu(run)); return true; }
+    return false;
   }
   // Wrap each piece of selected text in <span class="anc" data-anc="…"> (works across paragraphs).
   function wrapRange(range, id) {
@@ -1403,6 +1507,7 @@ export function initDesk(ctx) {
   }, true);
   vp.addEventListener('contextmenu', (e) => {
     if (e.shiftKey || !board) return; // Shift+right-click keeps the browser's own menu
+    if (!drag && markMenu(e)) { e.preventDefault(); return; }
     const ed = e.target.closest('[contenteditable="true"], input, textarea');
     if (ed && rcFocus && ed.contains(rcFocus)) return;
     e.preventDefault();
@@ -1741,16 +1846,16 @@ export function initDesk(ctx) {
   }
   const ptsToD = (pts) => 'M' + pts.map((p) => p.join(' ')).join(' L');
   const markStyle = (k) => k.mode === 'hl' ? { c: PEN[k.color] || PEN.yellow, w: 18, hl: 1 } : { c: PEN[k.color] || PEN.red, w: 2.6 };
-  const markAttrs = (k) => { const m = markStyle(k); return { stroke: m.c, 'stroke-width': m.w, fill: 'none', 'stroke-linecap': m.hl ? 'butt' : 'round', 'stroke-linejoin': 'round', 'stroke-opacity': m.hl ? 0.38 : 1 }; };
+  const markAttrs = (k) => { const m = markStyle(k); return { stroke: m.c, 'stroke-width': m.w, fill: 'none', 'stroke-linecap': m.hl ? 'butt' : 'round', 'stroke-linejoin': 'round' }; };
   function renderMarks(it, p) {
     if (p == null) { pagesOf(it).forEach((q) => renderMarks(it, q)); return; }
     const svg = pageEl(it, p)?.querySelector('.marks'); if (!svg) return;
     svg.setAttribute('viewBox', `0 0 1000 ${markH(it, p)}`); svg.setAttribute('preserveAspectRatio', 'none');
     svg.classList.toggle('erasing', !!ink && ink.id === it.id && ink.mode === 'erase');
     svg.innerHTML = (it.marks?.[p] || []).map((m, i) => {
-      if (m.t === 'box') return m.r.map((r) => m.u ? `<rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 2.4}" width="${r[2]}" height="2.4" fill="${m.c}"/>` : `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="${m.c}" fill-opacity="0.4"/>`).join('');
+      if (m.t === 'box') return m.r.map((r) => m.u ? `<rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 2.4}" width="${r[2]}" height="2.4" fill="${m.c}"/>` : `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="${hlc(m.c)}"/>`).join('');
       if (m.t === 'anc') return m.r.map((r) => `<rect data-i="${i}" x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}" fill="#C0392B" fill-opacity="0.08"/><rect data-i="${i}" x="${r[0]}" y="${r[1] + r[3] - 1.6}" width="${r[2]}" height="1.6" fill="#C0392B" fill-opacity="0.75"/>`).join('');
-      return `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round" stroke-opacity="${m.hl ? 0.38 : 1}"/>`;
+      return `<path data-i="${i}" d="${m.d}" stroke="${m.c}" stroke-width="${m.w}" fill="none" stroke-linecap="${m.hl ? 'butt' : 'round'}" stroke-linejoin="round"/>`;
     }).join('');
   }
   function eraseAt(it, cx, cy) {
@@ -2108,6 +2213,7 @@ export function initDesk(ctx) {
     board.items.forEach((i) => { if (i.type === 'sheet' && (i.collapsible || /^Transcript:/.test(i.title || ''))) upgradeTranscript(i); });
     board.items.forEach((i) => { if (i.type === 'sheet' && i.readonly === undefined && /^<p class="src">/.test(i.html || '')) i.readonly = true; });
     board.items.forEach((i) => { if (i.rot) i.rot = 0; }); // every piece sits square
+    board.items.forEach((i) => { if (i.html && /rgb\((246, 226, 122|191, 227, 168|244, 182, 200|184, 214, 242)\)/.test(i.html)) OLD_HL_RGB.forEach(([a, b]) => { i.html = i.html.split(`rgb(${a})`).join(`rgb(${b})`); }); });
     selected = null; sel = new Set(); selLink = null;
     board.items.forEach(mount); drawLinks(); renderSelBar(); setTool('select');
     if (!data.items.length && (!data.view || (data.view.x === 0 && data.view.y === 0))) board.view = { x: vp.clientWidth / 2 - 408 * 0.6, y: 60, z: 0.6 };
