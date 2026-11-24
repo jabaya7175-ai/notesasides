@@ -9,6 +9,7 @@ import { openMenu } from './menu.js';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: 'pkce' } });
 const $ = (id) => document.getElementById(id);
 const BASE = document.body.dataset.base || '/';
+const IN_APP = /NotesAsidesStudioApp/.test(navigator.userAgent); // the iPad/iPhone app
 const STUDIO_URL = () => location.origin + BASE + 'studio/';
 const raf = (fn) => { let q = false; return () => { if (q) return; q = true; requestAnimationFrame(() => { q = false; fn(); }); }; };
 const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2600); };
@@ -26,7 +27,8 @@ function confirmBox(title, html, okLabel = 'OK') {
 let user = null;
 export async function start() {
   const pwBox = $('signinPw');
-  pwBox.addEventListener('input', () => { $('signinGo').textContent = pwBox.value ? 'Sign in' : 'Email me a sign-in link'; });
+  pwBox.addEventListener('input', () => { $('signinGo').textContent = pwBox.value || IN_APP ? 'Sign in' : 'Email me a sign-in link'; });
+  if (IN_APP) { pwBox.placeholder = 'Password'; pwBox.required = true; $('signinGo').textContent = 'Sign in'; }
   $('signinForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('signinEmail').value.trim(); if (!email) return;
@@ -36,6 +38,7 @@ export async function start() {
       $('signinMsg').textContent = error ? (/invalid/i.test(error.message) ? 'That email and password don’t match. Leave the password blank to get an email link, then set a password under Account.' : `Couldn't sign in: ${error.message}`) : '';
       return;
     }
+    if (IN_APP) { $('signinMsg').textContent = 'In the app, sign in with your password. No password yet? Sign in to the Studio on the web once, then choose Account → Set sign-in password.'; pwBox.focus(); return; }
     $('signinMsg').textContent = 'Sending…';
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: STUDIO_URL(), shouldCreateUser: true } });
     $('signinMsg').textContent = error ? `Couldn't send the link: ${error.message}` : 'Check your email for a sign-in link. Open it in this browser.';

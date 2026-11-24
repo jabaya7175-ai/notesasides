@@ -3,6 +3,7 @@ name: Build and deploy site
 on:
   push:
     branches: [main]
+    paths-ignore: ['ios/**', '.github/workflows/ios.yml']
   schedule:
     # Rebuild hourly so newly published or scheduled posts get permanent pages.
     - cron: "23 * * * *"
