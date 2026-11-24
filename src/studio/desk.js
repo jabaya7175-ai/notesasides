@@ -66,9 +66,9 @@ export function initDesk(ctx) {
   try { Object.assign(style, JSON.parse(localStorage.getItem('na-desk-style') || '{}')); } catch {}
   const remember = (patch) => { Object.assign(style, patch); try { localStorage.setItem('na-desk-style', JSON.stringify(style)); } catch {} };
   // Preferences that apply to every board (kept in this browser).
-  let prefs = { notePad: 12 }; try { Object.assign(prefs, JSON.parse(localStorage.getItem('na-desk-prefs') || '{}')); } catch {}
+  let prefs = { notePad: 12, sheetX: 96, sheetY: 72 }; try { Object.assign(prefs, JSON.parse(localStorage.getItem('na-desk-prefs') || '{}')); } catch {}
   const setPref = (patch) => { Object.assign(prefs, patch); try { localStorage.setItem('na-desk-prefs', JSON.stringify(prefs)); } catch {} applyPrefs(); };
-  function applyPrefs() { world.style.setProperty('--note-pad', prefs.notePad + 'px'); }
+  function applyPrefs() { world.style.setProperty('--note-pad', prefs.notePad + 'px'); world.style.setProperty('--sheet-pad', `${prefs.sheetY}px ${prefs.sheetX}px`); }
   applyPrefs();
   let ink = null; // PDF markup mode: { id, mode: 'pen'|'hl'|'erase', color }
 
@@ -466,6 +466,7 @@ export function initDesk(ctx) {
       if (it.type === 'note') extra = `<span class="fsz" title="Margin inside every sticky note (your preference)">Margin<input type="number" class="npad" min="0" max="72" step="1" value="${Math.round(prefs.notePad * 0.75)}"><em>pt</em></span><i class="dv"></i>` + Object.keys(NOTE_COLORS).map((c) => `<button class="sw" data-c="${c}" style="background:${NOTE_COLORS[c]}" title="${c}"></button>`).join('');
       if (it.type === 'sheet') {
         extra = `<select data-a="paper" title="Paper size">${Object.entries(PAPER).map(([k, [n, w, h]]) => `<option value="${k}"${it.paper === k ? ' selected' : ''}>${n} (${w} × ${h})</option>`).join('')}<option value="custom"${!it.paper || it.paper === 'custom' ? ' selected' : ''}>Custom (${fmtIn(it.w)} × ${fmtIn(it.h)})</option></select>` +
+          `<span class="fsz spad" title="Page margins on every sheet (your preference)">Margins<input type="number" class="spx" min="0" max="3" step="0.25" value="${+(prefs.sheetX / IN).toFixed(2)}" title="Left and right margins"><em>in</em><input type="number" class="spy" min="0" max="3" step="0.25" value="${+(prefs.sheetY / IN).toFixed(2)}" title="Top and bottom margins"><em>in</em></span><i class="dv"></i>` +
           `<button data-a="orient" title="Portrait / landscape">${it.w > it.h ? 'Landscape' : 'Portrait'}</button><button data-a="zoom">Zoom to sheet</button>` +
           (overflows(it) ? '<button data-a="split" title="Flow the overflow onto new pages">Split into pages</button>' : '') +
           (chainOf(it).length > 1 ? '<button data-a="join" title="Put the pages back into one sheet">Join pages</button>' : '') +
@@ -506,7 +507,15 @@ export function initDesk(ctx) {
         const setPad = () => { const pt = Math.min(72, Math.max(0, Math.round(+np.value || 0))); np.value = pt; setPref({ notePad: Math.round(pt / 0.75) }); updateLinks(); toast(`Sticky-note margins set to ${pt} pt on all notes`); };
         np.addEventListener('change', setPad); np.addEventListener('keydown', (e) => { if (e.key === 'Enter') { setPad(); np.blur(); } });
       }
-      const fsIn = bar.querySelector('.fsz input:not(.npad)');
+      bar.querySelectorAll('.spx, .spy').forEach((inp) => {
+        const set = () => {
+          const v = Math.min(3, Math.max(0, Math.round((+inp.value || 0) * 100) / 100)); inp.value = v;
+          setPref(inp.classList.contains('spx') ? { sheetX: Math.round(v * IN) } : { sheetY: Math.round(v * IN) });
+          updateLinks(); renderSelBar();
+        };
+        inp.addEventListener('change', set); inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { set(); inp.blur(); } });
+      });
+      const fsIn = bar.querySelector('.fsz:not(.spad) input:not(.npad)');
       if (fsIn) {
         const setPt = (pt) => { pt = Math.min(144, Math.max(6, Math.round(pt * 2) / 2)); it.fs = Math.round(pt / 0.75 * 100) / 100; fsIn.value = pt; applyFs(it); if (it.type === 'text') remember({ fs: it.fs }); updateLinks(new Set([it.id])); save(); };
         fsIn.addEventListener('change', () => setPt(+fsIn.value || 12));
@@ -583,7 +592,6 @@ export function initDesk(ctx) {
   // A sheet whose text runs past its bottom margin can be split: the overflow moves
   // onto new sheets of the same size, placed to the right, breaking mid-paragraph at
   // the last line that fits. Pages share a `chain` (the first page's id) and `page` no.
-  const PAD_BOTTOM = 72;
   function overflows(it) { const pg = els.get(it.id)?.querySelector('.page'); return !!pg && pg.scrollHeight > pg.clientHeight + 2; }
   function chainOf(it) {
     const root = it.chain || it.id;
@@ -607,7 +615,7 @@ export function initDesk(ctx) {
     page.scrollTop = 0;
     if (page.scrollHeight <= page.clientHeight + 2) return null;
     if (!body.children.length && body.textContent.trim()) body.innerHTML = `<p>${body.innerHTML}</p>`;
-    const z = view().z, limit = page.getBoundingClientRect().bottom - PAD_BOTTOM * z;
+    const z = view().z, limit = page.getBoundingClientRect().bottom - prefs.sheetY * z;
     const blocks = [...body.children];
     const i = blocks.findIndex((b) => b.getBoundingClientRect().bottom > limit + 0.5);
     if (i < 0) return null;
