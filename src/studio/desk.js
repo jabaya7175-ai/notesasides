@@ -1038,6 +1038,24 @@ export function initDesk(ctx) {
   }
 
   /* ------------------------------------------------------------ tools */
+  // The piece under a point: the topmost ordinary piece; failing that a line passing near it,
+  // or the smallest box or ellipse around it.
+  function pieceAt(cx, cy) {
+    const hit = document.elementsFromPoint(cx, cy).map((n) => n.closest?.('.it')).find((n) => n && world.contains(n));
+    const h = hit && byId(hit.dataset.id);
+    if (h && h.type !== 'rect' && h.type !== 'ellipse' && h.type !== 'line') return h;
+    const p = toWorld(cx, cy), tol = 10 / view().z;
+    const near = board.items.filter((i) => {
+      if (i.type === 'line') {
+        const [a, b] = lineEnds(i), dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L));
+        return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)) <= tol;
+      }
+      return (i.type === 'rect' || i.type === 'ellipse') && p.x >= i.x - tol && p.x <= i.x + i.w + tol && p.y >= i.y - tol && p.y <= i.y + i.h + tol;
+    });
+    const line = near.filter((i) => i.type === 'line').sort((a, b) => (b.z || 0) - (a.z || 0))[0];
+    return h || line || near.sort((a, b) => a.w * a.h - b.w * b.h)[0] || null;
+  }
   function setTool(t) {
     tool = t; tieFrom = null; els.forEach((el) => el.classList.remove('tie-from'));
     document.querySelectorAll('#deskTools [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
@@ -1125,6 +1143,20 @@ export function initDesk(ctx) {
       }
       drag = { mode: 'draw', type: tool, p0, it: null, sx: e.clientX, sy: e.clientY, moved: false }; vp.setPointerCapture(e.pointerId); return;
     }
+    // String: any piece can be tied to any other, shapes and lines included (they only catch
+    // clicks on their outline otherwise, so they're found by position here).
+    if (tool === 'string') {
+      const it = pieceAt(e.clientX, e.clientY); if (!it) return;
+      e.preventDefault(); eatMouse = true;
+      const el = els.get(it.id);
+      if (!tieFrom) { tieFrom = it.id; el.classList.add('tie-from'); }
+      else if (tieFrom !== it.id) {
+        if (!board.links.some((l) => (l.a === tieFrom && l.b === it.id) || (l.b === tieFrom && l.a === it.id))) board.links.push({ id: uid(), a: tieFrom, b: it.id });
+        els.get(tieFrom)?.classList.remove('tie-from'); tieFrom = it.id; el.classList.add('tie-from');
+        drawLinks(); save();
+      }
+      return;
+    }
     const lend = e.target.closest('.lend');
     if (lend && !byId(lend.closest('.it').dataset.id)?.locked) {
       e.preventDefault(); eatMouse = true;
@@ -1155,16 +1187,6 @@ export function initDesk(ctx) {
     }
     if (itEl) {
       const it = byId(itEl.dataset.id), wasSel = sel.has(it.id) && sel.size === 1;
-      if (tool === 'string') {
-        e.preventDefault(); eatMouse = true;
-        if (!tieFrom) { tieFrom = it.id; itEl.classList.add('tie-from'); }
-        else if (tieFrom !== it.id) {
-          if (!board.links.some((l) => (l.a === tieFrom && l.b === it.id) || (l.b === tieFrom && l.a === it.id))) board.links.push({ id: uid(), a: tieFrom, b: it.id });
-          els.get(tieFrom)?.classList.remove('tie-from'); tieFrom = it.id; itEl.classList.add('tie-from');
-          drawLinks(); save(); toast('Tied. Click another piece to keep going, or Esc.');
-        }
-        return;
-      }
       if (e.shiftKey && !e.target.classList.contains('rz')) {
         e.preventDefault(); eatMouse = true; document.activeElement?.blur?.();
         const members = it.group ? groupIds(it.group) : [it.id], had = sel.has(it.id);
