@@ -6,6 +6,8 @@
 // The board is drawn at true scale: 1 inch = 96 board units (the CSS inch), so a
 // Letter sheet is 816 × 1056 and 12-point type is 16 units.
 
+import { openMenu } from './menu.js';
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 const escH = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const IN = 96;
@@ -1276,6 +1278,152 @@ export function initDesk(ctx) {
     if (nudge && sel.size) { e.preventDefault(); const s = e.shiftKey ? IN : IN / 8; sel.forEach((id) => { const it = byId(id); if (it && !it.locked) { it.x += nudge[0] * s; it.y += nudge[1] * s; touchItem(id); } }); save(); }
   });
 
+  /* ------------------------------------------------------------ right-click menu, copy & paste, stacking */
+  // Copied pieces live in localStorage so they paste into any board or window. The system
+  // clipboard gets their plain text, which is also how a paste recognises them.
+  const plain = (html) => { const d = document.createElement('div'); d.innerHTML = html || ''; return d.innerText.trim(); };
+  const clipText = (items) => items.map((i) => [i.title, plain(i.html), i.url].filter(Boolean).join('\n')).filter(Boolean).join('\n\n') || 'Drafting board pieces';
+  const getClip = () => { try { return JSON.parse(localStorage.getItem('na-desk-clip') || 'null'); } catch { return null; } };
+  function copySel(sys = true) {
+    if (!sel.size) return null;
+    const ids = new Set(sel);
+    const items = [...ids].map(byId).filter(Boolean).map((i) => JSON.parse(JSON.stringify(i)));
+    const clip = { items, links: board.links.filter((l) => ids.has(l.a) && ids.has(l.b)).map((l) => ({ ...l })), text: clipText(items) };
+    try { localStorage.setItem('na-desk-clip', JSON.stringify(clip)); } catch { toast('Could not copy: the pieces are too large'); return null; }
+    if (sys) navigator.clipboard?.writeText(clip.text).catch(() => {});
+    return clip;
+  }
+  function cutSel() { if (copySel()) removeSelected(); }
+  function pasteClip(clip, at) {
+    if (!clip?.items?.length) return false;
+    const x1 = Math.min(...clip.items.map((i) => i.x)), y1 = Math.min(...clip.items.map((i) => i.y));
+    const x2 = Math.max(...clip.items.map((i) => i.x + i.w)), y2 = Math.max(...clip.items.map((i) => i.y + i.h));
+    const c = at || viewCenter(), dx = Math.round(c.x - (at ? x1 : (x1 + x2) / 2)), dy = Math.round(c.y - (at ? y1 : (y1 + y2) / 2));
+    const map = new Map(), gmap = new Map(), out = [];
+    clip.items.forEach((i) => map.set(i.id, uid()));
+    clip.items.forEach((i) => {
+      const n = JSON.parse(JSON.stringify(i)); n.id = map.get(i.id); n.x += dx; n.y += dy; n.z = ++zTop;
+      if (n.group) { if (!gmap.has(n.group)) gmap.set(n.group, uid()); n.group = gmap.get(n.group); }
+      if (n.chain) { if (map.has(n.chain)) n.chain = map.get(n.chain); else { delete n.chain; delete n.page; } }
+      board.items.push(n); mount(n); out.push(n.id);
+    });
+    (clip.links || []).forEach((l) => board.links.push({ ...l, id: uid(), a: map.get(l.a), b: map.get(l.b) }));
+    drawLinks(); setSel(out); save(); return true;
+  }
+  async function pasteAny(at) {
+    let t = '';
+    try { t = (await navigator.clipboard.readText()).trim(); } catch {}
+    const clip = getClip();
+    if (clip && (!t || t === clip.text)) { pasteClip(clip, at); return; }
+    if (!t) { toast('Nothing to paste'); return; }
+    const p = at || viewCenter();
+    if (/^(https?:\/\/|www\.)\S+$/i.test(t)) addLink(t, p.x, p.y); else addItem('text', p.x, p.y, { html: escH(t).replace(/\n/g, '<br>') });
+  }
+  function restack(ids, front) {
+    const its = ids.map(byId).filter(Boolean); if (!its.length) return;
+    if (front) its.forEach((it) => { it.z = ++zTop; });
+    else {
+      const rest = board.items.filter((i) => !ids.includes(i.id)).sort((a, b) => (a.z || 0) - (b.z || 0));
+      [...its, ...rest].forEach((it, k) => { it.z = k + 1; }); zTop = board.items.length;
+    }
+    board.items.forEach(place); save();
+    if (!front) setSel([]);
+  }
+  document.addEventListener('copy', (e) => {
+    // With nothing highlighted, Ctrl+C copies the selected piece even while its text has the caret.
+    if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('input, textarea') || getSelection().toString() || !sel.size) return;
+    if (e.target.closest?.('[contenteditable]') && !sel.has(e.target.closest('.it')?.dataset.id)) return;
+    const clip = copySel(false); if (!clip) return; e.preventDefault(); e.clipboardData.setData('text/plain', clip.text);
+  });
+  document.addEventListener('cut', (e) => {
+    if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea') || getSelection().toString() || !sel.size) return;
+    const clip = copySel(false); if (!clip) return; e.preventDefault(); e.clipboardData.setData('text/plain', clip.text); removeSelected();
+  });
+
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  const selbarItems = (skip = []) => [...$('deskSel').querySelectorAll('button[data-a]')]
+    .filter((b) => !skip.includes(b.dataset.a))
+    .map((b) => { const a = b.dataset.a; return { label: b.textContent.trim(), act: () => $('deskSel').querySelector(`[data-a="${a}"]`)?.click() }; });
+  const ADD = [['sheet', 'Sheet'], ['note', 'Sticky note'], ['quote', 'Quote card'], ['text', 'Text'], ['rect', 'Rectangle'], ['ellipse', 'Ellipse'], ['line', 'Line']];
+  function addHere(t, p) {
+    addItem(t, p.x, p.y); setTool('select');
+    const f = els.get(selected)?.querySelector(t === 'sheet' ? '.sh-title' : '[contenteditable]'); if (t !== 'rect' && t !== 'ellipse' && t !== 'line') f?.focus({ preventScroll: true });
+  }
+  function boardMenu(e) {
+    const p = toWorld(e.clientX, e.clientY), clip = getClip();
+    return [
+      { label: 'Paste here', kbd: mod + 'V', act: () => pasteAny(p) },
+      clip ? { label: `Paste ${clip.items.length === 1 ? 'copied piece' : clip.items.length + ' copied pieces'} here`, act: () => pasteClip(clip, p) } : null,
+      '-',
+      { label: 'Add here', sub: ADD.map(([t, l]) => ({ label: l, act: () => addHere(t, p) })) },
+      { label: 'Add image…', act: () => $('deskImgInput').click() },
+      { label: 'Add PDF…', act: () => $('deskPdfInput').click() },
+      { label: 'Add link…', act: () => { $('linkRow').hidden = false; $('linkInput').focus(); } },
+      { label: 'YouTube transcript…', act: () => { $('trRow').hidden = false; $('trUrl').focus(); } },
+      '-',
+      { label: 'Select all', kbd: mod + 'A', disabled: !board.items.some((i) => !i.locked), act: () => setSel(board.items.filter((i) => !i.locked).map((i) => i.id)) },
+      { label: 'Undo', kbd: mod + 'Z', disabled: hist.length < 2, act: undo },
+      { label: 'Redo', kbd: mod + 'Shift+Z', disabled: !fut.length, act: redo },
+      '-',
+      { label: 'Zoom to 100%', kbd: mod + '1', act: () => zoomAt(1, e.clientX, e.clientY) },
+      { label: 'Fit everything', kbd: mod + '0', act: fitAll },
+      { label: 'Background…', act: () => $('bgBtn').click() },
+    ];
+  }
+  function pieceMenu(it) {
+    const multi = sel.size > 1, locked = [...sel].every((i) => byId(i)?.locked);
+    const ids = [...sel];
+    return [
+      ...selbarItems(['del', 'dup', 'zoom', 'orient']),
+      '-',
+      { label: 'Cut', kbd: mod + 'X', disabled: locked, act: cutSel },
+      { label: 'Copy', kbd: mod + 'C', act: () => copySel() },
+      { label: 'Paste', kbd: mod + 'V', disabled: !getClip(), act: () => pasteAny() },
+      { label: 'Duplicate', kbd: mod + 'D', act: duplicateSel },
+      '-',
+      { label: 'Bring to front', act: () => restack(ids, true) },
+      { label: 'Send to back', act: () => restack(ids, false) },
+      !multi && (it.type === 'sheet' || it.type === 'pdf' || it.type === 'image' || it.type === 'video') ? { label: 'Zoom to this', act: () => zoomTo(it) } : null,
+      '-',
+      { label: multi ? `Delete ${sel.size} pieces` : 'Delete', kbd: 'Del', danger: true, disabled: locked, act: removeSelected },
+    ];
+  }
+  function zoomTo(it) {
+    const r = vp.getBoundingClientRect(), z = Math.min(4, Math.max(0.1, Math.min((r.width - 120) / it.w, (r.height - 120) / it.h)));
+    view().z = z; view().x = r.width / 2 - (it.x + it.w / 2) * z; view().y = r.height / 2 - (it.y + it.h / 2) * z; touchView();
+  }
+  // A right-click doesn't move the caret into a piece; inside text you're already typing in,
+  // the browser's own menu (spelling, copy, paste) stays.
+  let rcFocus = null;
+  vp.addEventListener('mousedown', (e) => {
+    if (e.button !== 2) return;
+    rcFocus = document.activeElement;
+    const ed = e.target.closest('[contenteditable="true"], input, textarea');
+    if (!(ed && rcFocus && ed.contains(rcFocus)) && !e.shiftKey) e.preventDefault();
+  }, true);
+  vp.addEventListener('contextmenu', (e) => {
+    if (e.shiftKey || !board) return; // Shift+right-click keeps the browser's own menu
+    const ed = e.target.closest('[contenteditable="true"], input, textarea');
+    if (ed && rcFocus && ed.contains(rcFocus)) return;
+    e.preventDefault();
+    if (drag) return;
+    const lk = e.target.closest('.lk');
+    if (lk) {
+      if (selLink !== lk.dataset.id) selectLink(lk.dataset.id);
+      openMenu(e.clientX, e.clientY, [...selbarItems(['del']), '-', { label: 'Cut string', danger: true, act: removeSelected }]);
+      return;
+    }
+    const el = e.target.closest('.it');
+    const it = el && byId(el.dataset.id);
+    if (it) {
+      if (!sel.has(it.id)) { if (it.locked) setSel([it.id]); else pick(it); }
+      openMenu(e.clientX, e.clientY, pieceMenu(it));
+      return;
+    }
+    if (sel.size || selLink) { select(null); if (selLink) { selLink = null; drawLinks(); renderSelBar(); } }
+    openMenu(e.clientX, e.clientY, boardMenu(e));
+  });
+
   /* ------------------------------------------------------------ touch: pinch to zoom, two fingers to pan */
   const touchUI = matchMedia('(any-pointer: coarse)').matches;
   if (touchUI) {
@@ -1431,6 +1579,19 @@ export function initDesk(ctx) {
         e.preventDefault(); libDrag = { r, el, sx: e.clientX, sy: e.clientY, ghost: null };
       });
       el.addEventListener('dblclick', () => { const c = viewCenter(); dropData(r, c.x, c.y); });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); const c = viewCenter(), x = el.querySelector('.x');
+        openMenu(e.clientX, e.clientY, [
+          { label: 'Add to the board', act: () => dropData(r, c.x, c.y) },
+          r.kind === 'link' ? { label: 'Open link', act: () => open(r.url, '_blank', 'noopener') } : null,
+          r.kind === 'post' ? { label: 'Open post', act: () => ctx.openPost(r.id) } : null,
+          r.kind === 'image' ? { label: 'Open image', act: () => open(r.url, '_blank', 'noopener') } : null,
+          r.body ? { label: 'Copy text', act: () => navigator.clipboard?.writeText(r.body) } : null,
+          r.url ? { label: 'Copy link', act: () => navigator.clipboard?.writeText(r.url) } : null,
+          x ? '-' : null,
+          x ? { label: 'Remove from library', danger: true, act: () => x.click() } : null,
+        ]);
+      });
     });
     box.querySelectorAll('[data-del]').forEach((b) => b.onclick = async (e) => {
       e.stopPropagation();
@@ -1820,7 +1981,9 @@ export function initDesk(ctx) {
   // Paste a link (or plain text) straight onto the board.
   document.addEventListener('paste', (e) => {
     if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea')) return;
-    const t = (e.clipboardData?.getData('text/plain') || '').trim(); if (!t) return;
+    const t = (e.clipboardData?.getData('text/plain') || '').trim();
+    const clip = getClip(); if (clip && t === clip.text) { e.preventDefault(); pasteClip(clip); return; }
+    if (!t) return;
     e.preventDefault(); const c = viewCenter();
     if (/^(https?:\/\/|www\.)\S+$/i.test(t)) addLink(t, c.x, c.y);
     else addItem('text', c.x - 150, c.y, { html: escH(t).replace(/\n/g, '<br>') });

@@ -17,6 +17,8 @@ const base = import.meta.env.BASE_URL;
   <meta name="robots" content="noindex">
   <title>Studio · Notes & Asides.</title>
   <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml">
+  <link rel="manifest" href={`${base}studio/manifest.webmanifest`}>
+  <link rel="apple-touch-icon" href={`${base}studio/apple-touch-icon.png`}>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
@@ -28,8 +30,9 @@ const base = import.meta.env.BASE_URL;
   <div class="center"><form class="card" id="signinForm">
     <h1>Notes &amp; Asides.</h1>
     <p>Studio sign-in</p>
-    <input type="email" id="signinEmail" placeholder="Your email address" autocomplete="email" required>
-    <button class="btn primary" type="submit">Email me a sign-in link</button>
+    <input type="email" id="signinEmail" placeholder="Your email address" autocomplete="username email" required>
+    <input type="password" id="signinPw" placeholder="Password (leave blank for an email link)" autocomplete="current-password">
+    <button class="btn primary" type="submit" id="signinGo">Email me a sign-in link</button>
     <div class="small" id="signinMsg"></div>
   </form></div>
 </section>
@@ -47,14 +50,37 @@ const base = import.meta.env.BASE_URL;
 <section class="view" id="v-dash">
   <div class="topbar">
     <div class="tb-left"><a class="pubname" href={base} style="text-decoration:none;color:inherit">Notes &amp; Asides.</a><span class="pill">Studio</span></div>
-    <div class="tb-right"><a class="btn" href="#/desk">Drafting board</a><a class="btn" href={base} target="_blank" rel="noopener">View site</a><button class="btn" id="signout">Sign out</button><button class="btn primary" id="newPost">New post</button></div>
+    <div class="tb-right">
+      <button class="btn" id="installApp" hidden title="Install the Studio as an app on this computer">Install app</button>
+      <a class="btn" href="#/desk">Drafting board</a>
+      <a class="btn" href={base} target="_blank" rel="noopener">View site</a>
+      <button class="btn" id="acctBtn" title="Account">Account ▾</button>
+      <button class="btn primary" id="newPost" title="New post (N)">New post</button>
+    </div>
   </div>
   <div class="dash">
-    <div class="dash-head"><h1>Posts</h1></div>
-    <div class="tabs" id="tabs"><button data-t="draft" class="on">Drafts</button><button data-t="scheduled">Scheduled</button><button data-t="published">Published</button></div>
-    <ul class="rows" id="rows"></ul>
+    <div class="dash-main">
+      <div class="dash-head"><h1>Posts</h1><input type="search" id="postSearch" placeholder="Search posts   /" autocomplete="off"></div>
+      <div class="tabs" id="tabs"><button data-t="draft" class="on">Drafts <span class="n"></span></button><button data-t="scheduled">Scheduled <span class="n"></span></button><button data-t="published">Published <span class="n"></span></button></div>
+      <ul class="rows" id="rows"><li class="loading">Loading…</li></ul>
+    </div>
+    <aside class="dash-side">
+      <div class="side-h"><h2>Boards</h2><button class="mini" id="dashNewBoard">New board</button></div>
+      <ul class="boards" id="dashBoards"></ul>
+      <p class="dash-tip">Right-click a post or board for more. <kbd>N</kbd> new post · <kbd>/</kbd> search · <kbd>B</kbd> drafting board</p>
+    </aside>
   </div>
 </section>
+
+<dialog id="pwdlg">
+  <form method="dialog" class="card">
+    <h2 style="margin-top:0">Sign-in password</h2>
+    <p class="small">With a password you can sign in straight from the installed app or the iPad app, without waiting for an email.</p>
+    <input type="password" id="pwNew" placeholder="New password (8 or more characters)" autocomplete="new-password" minlength="8">
+    <div class="small" id="pwMsg"></div>
+    <p style="display:flex;gap:8px;justify-content:flex-end;margin:16px 0 0"><button class="btn" value="cancel">Cancel</button><button class="btn primary" id="pwSave" value="ok">Save password</button></p>
+  </form>
+</dialog>
 
 <!-- ============ Drafting board ============ -->
 <section class="view" id="v-desk">

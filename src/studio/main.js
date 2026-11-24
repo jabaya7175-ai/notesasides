@@ -4,6 +4,7 @@ import { SUPABASE_URL, SUPABASE_KEY, AUTHOR } from '../lib/config.js';
 import { esc, slugify, formatDate, readingMinutes, renderArticle, DEFAULT_DROP_CAP, openingOf } from '../lib/render.js';
 import { fitDropcap, initReader } from '../scripts/reader.js';
 import { initDesk } from './desk.js';
+import { openMenu } from './menu.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: 'pkce' } });
 const $ = (id) => document.getElementById(id);
@@ -24,15 +25,32 @@ function confirmBox(title, html, okLabel = 'OK') {
 /* =================================================================== auth & routing */
 let user = null;
 export async function start() {
+  const pwBox = $('signinPw');
+  pwBox.addEventListener('input', () => { $('signinGo').textContent = pwBox.value ? 'Sign in' : 'Email me a sign-in link'; });
   $('signinForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('signinEmail').value.trim(); if (!email) return;
+    if (pwBox.value) {
+      $('signinMsg').textContent = 'Signing in…';
+      const { error } = await sb.auth.signInWithPassword({ email, password: pwBox.value });
+      $('signinMsg').textContent = error ? (/invalid/i.test(error.message) ? 'That email and password don’t match. Leave the password blank to get an email link, then set a password under Account.' : `Couldn't sign in: ${error.message}`) : '';
+      return;
+    }
     $('signinMsg').textContent = 'Sending…';
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: STUDIO_URL(), shouldCreateUser: true } });
     $('signinMsg').textContent = error ? `Couldn't send the link: ${error.message}` : 'Check your email for a sign-in link. Open it in this browser.';
   });
   const signOut = async () => { await sb.auth.signOut(); location.hash = ''; route(); };
-  $('signout').onclick = signOut; $('signoutDenied').onclick = signOut;
+  $('signoutDenied').onclick = signOut;
+  $('acctBtn').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left, r.bottom + 6, [
+    { label: user?.email || 'Signed in', disabled: true },
+    '-',
+    { label: 'Set sign-in password…', act: setPassword },
+    installPrompt ? { label: 'Install the Studio on this computer', act: installApp } : null,
+    '-',
+    { label: 'Sign out', act: signOut },
+  ]); };
+  wireInstall();
   sb.auth.onAuthStateChange((_evt, session) => { const changed = (session?.user?.id || null) !== (user?.id || null); user = session?.user || null; if (changed) route(); });
   const { data } = await sb.auth.getSession(); user = data.session?.user || null;
   addEventListener('hashchange', route);
@@ -53,36 +71,151 @@ async function route() {
   else { await flushSave(); await desk?.flush(); setPreview(false); show('v-dash'); loadDash(); }
 }
 
-/* =================================================================== dashboard */
-let tab = 'draft';
-function wireDash() {
-  $('tabs').querySelectorAll('button').forEach((b) => b.onclick = () => { tab = b.dataset.t; $('tabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); loadDash(); });
-  $('newPost').onclick = async () => {
-    const { data, error } = await sb.from('posts').insert({ title: '' }).select('id').single();
-    if (error) { toast('Could not create a post: ' + error.message); return; }
-    location.hash = `#/post/${data.id}`;
+/* =================================================================== install & password */
+let installPrompt = null;
+function wireInstall() {
+  addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; $('installApp').hidden = false; });
+  addEventListener('appinstalled', () => { installPrompt = null; $('installApp').hidden = true; toast('Installed. Open the Studio from your Start menu or desktop.'); });
+  $('installApp').onclick = installApp;
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register(BASE + 'studio/sw.js', { scope: BASE + 'studio/' }).catch(() => {});
+}
+async function installApp() {
+  if (!installPrompt) { toast('Use your browser’s menu: Install app (Chrome or Edge).'); return; }
+  installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; $('installApp').hidden = true;
+}
+function setPassword() {
+  const d = $('pwdlg'); $('pwNew').value = ''; $('pwMsg').textContent = ''; d.showModal();
+  $('pwSave').onclick = async (e) => {
+    e.preventDefault(); const pw = $('pwNew').value;
+    if (pw.length < 8) { $('pwMsg').textContent = 'Use at least 8 characters.'; return; }
+    $('pwMsg').textContent = 'Saving…';
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) { $('pwMsg').textContent = `Couldn't save: ${error.message}`; return; }
+    d.close(); toast('Password saved. You can sign in with it anywhere.');
   };
 }
-async function loadDash() {
-  const { data, error } = await sb.from('posts').select('id,title,subtitle,status,kind,updated_at,published_at').order('updated_at', { ascending: false });
-  const rows = $('rows');
-  if (error) { rows.innerHTML = `<li>Couldn't load posts: ${esc(error.message)}</li>`; return; }
-  const now = Date.now();
-  const state = (p) => p.status !== 'published' ? 'draft' : (new Date(p.published_at).getTime() > now ? 'scheduled' : 'published');
-  const list = data.filter((p) => state(p) === tab);
-  rows.innerHTML = list.length ? list.map((p) => {
-    const st = state(p);
-    const when = st === 'draft' ? `Edited ${formatDate(p.updated_at)}` : `${st === 'scheduled' ? 'Goes live' : 'Published'} ${formatDate(p.published_at)}`;
-    return `<li data-id="${p.id}"><div><div class="t">${esc(p.title || 'Untitled')}</div>${p.subtitle ? `<div class="s">${esc(p.subtitle)}</div>` : ''}</div>
-      <div class="m"><span class="st ${st}">${st}</span><br>${esc(when)}</div><button class="del" data-del="${p.id}" title="Delete post">Delete</button></li>`;
-  }).join('') : `<li style="cursor:default;color:var(--muted);font-style:italic">${tab === 'draft' ? 'No drafts. Start one with “New post.”' : tab === 'scheduled' ? 'Nothing scheduled.' : 'Nothing published yet.'}</li>`;
-  rows.querySelectorAll('li[data-id]').forEach((li) => li.onclick = (e) => { if (e.target.closest('[data-del]')) return; location.hash = `#/post/${li.dataset.id}`; });
-  rows.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
-    const p = data.find((x) => x.id === b.dataset.del);
-    if (!(await confirmBox('Delete this post?', `<p>“${esc(p.title || 'Untitled')}” and its saved versions will be deleted permanently.</p>`, 'Delete'))) return;
-    const { error: e2 } = await sb.from('posts').delete().eq('id', p.id);
-    if (e2) toast('Could not delete: ' + e2.message); else { toast('Post deleted'); loadDash(); }
+
+/* =================================================================== dashboard */
+let tab = 'draft', allPosts = [], boards = [];
+const postState = (p) => p.status !== 'published' ? 'draft' : (new Date(p.published_at).getTime() > Date.now() ? 'scheduled' : 'published');
+const postHref = (p) => location.origin + BASE + 'p/' + encodeURIComponent(p.slug) + '/';
+async function newPost() {
+  const { data, error } = await sb.from('posts').insert({ title: '' }).select('id').single();
+  if (error) { toast('Could not create a post: ' + error.message); return; }
+  location.hash = `#/post/${data.id}`;
+}
+async function newBoardFromDash() {
+  const { data, error } = await sb.from('boards').insert({ title: 'Untitled board' }).select('id').single();
+  if (error) { toast('Could not create a board: ' + error.message); return; }
+  location.hash = `#/desk/${data.id}`;
+}
+function wireDash() {
+  $('tabs').querySelectorAll('button').forEach((b) => b.onclick = () => { tab = b.dataset.t; $('tabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); renderRows(); });
+  $('newPost').onclick = newPost;
+  $('dashNewBoard').onclick = newBoardFromDash;
+  $('postSearch').addEventListener('input', renderRows);
+  $('postSearch').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.target.value = ''; renderRows(); e.target.blur(); } if (e.key === 'Enter') $('rows').querySelector('li[data-id]')?.click(); });
+  document.addEventListener('keydown', (e) => {
+    if (!$('v-dash').classList.contains('on') || e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, [contenteditable], dialog')) return;
+    if (e.key === 'n') { e.preventDefault(); newPost(); }
+    if (e.key === '/') { e.preventDefault(); $('postSearch').focus(); }
+    if (e.key === 'b') { e.preventDefault(); location.hash = '#/desk'; }
   });
+}
+async function loadDash() {
+  const [{ data, error }, { data: bs }] = await Promise.all([
+    sb.from('posts').select('id,title,subtitle,status,kind,slug,section,updated_at,published_at').order('updated_at', { ascending: false }),
+    sb.from('boards').select('id,title,updated_at').order('updated_at', { ascending: false }),
+  ]);
+  if (error) { $('rows').innerHTML = `<li class="loading">Couldn't load posts: ${esc(error.message)}</li>`; return; }
+  allPosts = data; boards = bs || [];
+  const n = { draft: 0, scheduled: 0, published: 0 }; data.forEach((p) => n[postState(p)]++);
+  $('tabs').querySelectorAll('button').forEach((b) => { b.querySelector('.n').textContent = n[b.dataset.t] || ''; });
+  renderRows(); renderBoards();
+}
+function renderRows() {
+  const rows = $('rows'), q = $('postSearch').value.trim().toLowerCase();
+  let list = allPosts.filter((p) => postState(p) === tab && (!q || `${p.title} ${p.subtitle} ${p.section}`.toLowerCase().includes(q)));
+  if (tab === 'scheduled') list.sort((a, b) => new Date(a.published_at) - new Date(b.published_at));
+  if (tab === 'published') list.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+  rows.innerHTML = list.length ? list.map((p) => {
+    const st = postState(p);
+    const when = st === 'draft' ? `Edited ${formatDate(p.updated_at)}` : `${st === 'scheduled' ? 'Goes live' : 'Published'} ${formatDate(p.published_at)}`;
+    return `<li data-id="${p.id}" tabindex="0"><div><div class="t">${esc(p.title || 'Untitled')}</div>${p.subtitle ? `<div class="s">${esc(p.subtitle)}</div>` : ''}</div>
+      <div class="m">${p.section ? `<span class="sec">${esc(p.section)}</span> ` : ''}<span class="st ${st}">${st}</span><br>${esc(when)}</div><button class="more" data-more="${p.id}" title="More">⋯</button></li>`;
+  }).join('') : `<li class="loading">${q ? 'No posts match.' : tab === 'draft' ? 'No drafts. Start one with “New post” or press N.' : tab === 'scheduled' ? 'Nothing scheduled.' : 'Nothing published yet.'}</li>`;
+  rows.querySelectorAll('li[data-id]').forEach((li) => {
+    const p = allPosts.find((x) => x.id === li.dataset.id);
+    li.onclick = (e) => { if (e.target.closest('[data-more]')) return; location.hash = `#/post/${p.id}`; };
+    li.onkeydown = (e) => { if (e.key === 'Enter') li.click(); if (e.key === 'ArrowDown') li.nextElementSibling?.focus(); if (e.key === 'ArrowUp') li.previousElementSibling?.focus(); if (e.key === 'Delete') deletePost(p); };
+    li.oncontextmenu = (e) => { e.preventDefault(); openMenu(e.clientX, e.clientY, postMenu(p)); };
+    li.querySelector('[data-more]').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.right - 220, r.bottom + 4, postMenu(p)); };
+  });
+}
+function postMenu(p) {
+  const st = postState(p), url = location.origin + BASE + 'studio/#/post/' + p.id;
+  return [
+    { label: 'Open', kbd: 'Enter', act: () => { location.hash = `#/post/${p.id}`; } },
+    { label: 'Open in a new window', act: () => open(url, '_blank') },
+    st === 'published' && p.slug ? { label: 'View on the site', act: () => open(postHref(p), '_blank', 'noopener') } : null,
+    st === 'published' && p.slug ? { label: 'Copy the post’s link', act: () => { navigator.clipboard?.writeText(postHref(p)); toast('Link copied'); } } : null,
+    '-',
+    { label: 'Duplicate as a draft', act: () => duplicatePost(p) },
+    st !== 'draft' ? { label: st === 'scheduled' ? 'Cancel the schedule (back to drafts)' : 'Unpublish (back to drafts)', act: () => unpublishRow(p) } : null,
+    '-',
+    { label: 'Delete…', kbd: 'Del', danger: true, act: () => deletePost(p) },
+  ];
+}
+async function duplicatePost(p) {
+  const { data, error } = await sb.from('posts').select('*').eq('id', p.id).single();
+  if (error) { toast('Could not duplicate: ' + error.message); return; }
+  const copy = { ...data, title: (data.title || 'Untitled') + ' (copy)', status: 'draft', slug: null, published_at: null };
+  ['id', 'created_at', 'updated_at'].forEach((k) => delete copy[k]);
+  const { error: e2 } = await sb.from('posts').insert(copy);
+  if (e2) { toast('Could not duplicate: ' + e2.message); return; }
+  tab = 'draft'; $('tabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.t === 'draft')); loadDash();
+}
+async function unpublishRow(p) {
+  if (!(await confirmBox(postState(p) === 'scheduled' ? 'Cancel the schedule?' : 'Unpublish this post?', `<p>“${esc(p.title || 'Untitled')}” goes back to Drafts${postState(p) === 'published' ? ' and comes off the site at the next rebuild' : ''}.</p>`, postState(p) === 'scheduled' ? 'Cancel schedule' : 'Unpublish'))) return;
+  const { error } = await sb.from('posts').update({ status: 'draft' }).eq('id', p.id);
+  if (error) toast('Could not change it: ' + error.message); else loadDash();
+}
+async function deletePost(p) {
+  if (!(await confirmBox('Delete this post?', `<p>“${esc(p.title || 'Untitled')}” and its saved versions will be deleted permanently.</p>`, 'Delete'))) return;
+  const { error } = await sb.from('posts').delete().eq('id', p.id);
+  if (error) toast('Could not delete: ' + error.message); else { toast('Post deleted'); loadDash(); }
+}
+function renderBoards() {
+  const ul = $('dashBoards');
+  ul.innerHTML = boards.length ? boards.slice(0, 12).map((b) => `<li data-id="${b.id}" tabindex="0"><span class="t">${esc(b.title || 'Untitled board')}</span><span class="d">${esc(formatDate(b.updated_at))}</span></li>`).join('') : '<li class="loading">No boards yet.</li>';
+  ul.querySelectorAll('li[data-id]').forEach((li) => {
+    const b = boards.find((x) => x.id === li.dataset.id), go = () => { location.hash = `#/desk/${b.id}`; };
+    li.onclick = go; li.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    li.oncontextmenu = (e) => { e.preventDefault(); openMenu(e.clientX, e.clientY, [
+      { label: 'Open', act: go },
+      { label: 'Open in a new window', act: () => open(location.origin + BASE + 'studio/#/desk/' + b.id, '_blank') },
+      { label: 'Rename…', act: () => renameBoard(b) },
+      '-',
+      { label: 'Delete…', danger: true, act: () => deleteBoard(b) },
+    ]); };
+  });
+}
+async function renameBoard(b) {
+  const li = $('dashBoards').querySelector(`li[data-id="${b.id}"] .t`); li.contentEditable = 'true'; li.focus(); getSelection().selectAllChildren(li);
+  const done = async (keep) => {
+    li.contentEditable = 'false'; li.onblur = li.onkeydown = null;
+    const v = li.textContent.trim() || 'Untitled board';
+    if (!keep || v === b.title) { li.textContent = b.title || 'Untitled board'; return; }
+    const { error } = await sb.from('boards').update({ title: v }).eq('id', b.id);
+    if (error) toast('Could not rename: ' + error.message); else b.title = v;
+  };
+  li.onblur = () => done(true);
+  li.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); li.blur(); } if (e.key === 'Escape') { li.onblur = null; done(false); } };
+}
+async function deleteBoard(b) {
+  if (!(await confirmBox('Delete this board?', `<p>“${esc(b.title || 'Untitled board')}” and everything on it will be deleted permanently. Library items stay.</p>`, 'Delete'))) return;
+  const { error } = await sb.from('boards').delete().eq('id', b.id);
+  if (error) toast('Could not delete: ' + error.message); else loadDash();
 }
 
 /* =================================================================== editor state */
