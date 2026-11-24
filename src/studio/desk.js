@@ -1479,14 +1479,91 @@ export function initDesk(ctx) {
     (clip.links || []).forEach((l) => board.links.push({ ...l, id: uid(), a: map.get(l.a), b: map.get(l.b) }));
     drawLinks(); setSel(out); save(); return true;
   }
-  async function pasteAny(at) {
-    let t = '';
-    try { t = (await navigator.clipboard.readText()).trim(); } catch {}
+  // Pasting from outside the board: images and screenshots, PDFs, Markdown or text files,
+  // formatted text from web pages, Word or Google Docs (kept as a sheet), links and plain text.
+  // It lands under the pointer when the pointer is over the board, otherwise in the middle.
+  let lastPt = null;
+  vp.addEventListener('pointermove', (e) => { lastPt = { cx: e.clientX, cy: e.clientY }; }, { passive: true });
+  vp.addEventListener('pointerleave', () => { lastPt = null; });
+  const pastePoint = () => lastPt ? toWorld(lastPt.cx, lastPt.cy) : viewCenter();
+  const KEEP = { P: 'p', BR: 'br', B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li', BLOCKQUOTE: 'blockquote', H1: 'h3', H2: 'h3', H3: 'h3', H4: 'h4', H5: 'h4', H6: 'h4', A: 'a', DIV: 'p', SECTION: 'p', ARTICLE: 'p', TR: 'p', PRE: 'p', FIGCAPTION: 'p' };
+  const DROP = /^(SCRIPT|STYLE|META|LINK|TITLE|NOSCRIPT|SVG|IFRAME|OBJECT|BUTTON|INPUT|SELECT|TEXTAREA|NAV|FORM|IMG|VIDEO|AUDIO|PICTURE|HEAD)$/;
+  function cleanHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html'), out = document.createElement('div');
+    const walk = (from, to) => from.childNodes.forEach((n) => {
+      if (n.nodeType === 3) { if (n.data) to.appendChild(document.createTextNode(n.data.replace(/\s+/g, ' '))); return; }
+      if (n.nodeType !== 1 || DROP.test(n.tagName)) return;
+      const st = n.getAttribute('style') || '';
+      // Wrappers (div, section…) holding paragraphs or headings pass straight through.
+      const wrapper = /^(DIV|SECTION|ARTICLE|MAIN|HEADER|FOOTER|ASIDE|SPAN|FONT|TABLE|TBODY|THEAD|TD|TH|FIGURE)$/.test(n.tagName) && n.querySelector('p, div, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, li, tr, br');
+      const tag = wrapper || n.tagName === 'SPAN' || n.tagName === 'FONT' ? null : KEEP[n.tagName];
+      // Google Docs and Word mark bold and italic with styles, not tags.
+      let tgt = to;
+      if (tag) {
+        const el = document.createElement(tag);
+        if (tag === 'a') { const h = n.getAttribute('href') || ''; if (!/^https?:/i.test(h)) { walk(n, to); return; } el.href = h; el.target = '_blank'; el.rel = 'noopener'; }
+        to.appendChild(el); tgt = el;
+      }
+      if (/font-weight:\s*(bold|[6-9]00)/i.test(st) && tag !== 'b' && !/^h/.test(tag || '')) { const b = document.createElement('b'); tgt.appendChild(b); tgt = b; }
+      if (/font-style:\s*italic/i.test(st) && tag !== 'i') { const i = document.createElement('i'); tgt.appendChild(i); tgt = i; }
+      walk(n, tgt);
+    });
+    walk(doc.body, out);
+    // Tidy: no blocks inside paragraphs, no empty paragraphs, loose text wrapped in <p>.
+    out.querySelectorAll('p p, p h3, p h4, p ul, p ol, p blockquote').forEach((n) => { const o = n.parentElement?.closest('p'); if (o) o.replaceWith(...o.childNodes); });
+    out.querySelectorAll('p, h3, h4, li, b, i, u').forEach((n) => { if (!n.textContent.trim() && !n.querySelector('br')) n.remove(); });
+    out.querySelectorAll('b b, i i').forEach((n) => n.replaceWith(...n.childNodes));
+    const wrapped = document.createElement('div'); let para = null;
+    [...out.childNodes].forEach((n) => {
+      const inline = n.nodeType === 3 || /^(B|I|U|A|BR)$/.test(n.tagName);
+      if (inline) { if (n.nodeType === 3 && !n.data.trim() && !para) return; (para ||= wrapped.appendChild(document.createElement('p'))).appendChild(n); }
+      else { para = null; wrapped.appendChild(n); }
+    });
+    return wrapped.innerHTML.replace(/<p>\s*<br>\s*<\/p>/g, '').trim();
+  }
+  async function pasteFiles(files, p) {
+    let n = 0;
+    for (const f of files) {
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { const r = await uploadPdf(f); if (r) await placePdf(r, p.x, p.y); }
+      else if (f.type.startsWith('image/')) await dropImage(f.name && f.name !== 'image.png' ? f : new File([f], `Pasted image ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.png`, { type: f.type }), p.x, p.y);
+      else if (/\.(md|markdown|txt)$/i.test(f.name) || f.type.startsWith('text/')) { const m = mdToHtml(await f.text()); addItem('sheet', p.x, p.y, { title: m.title || f.name.replace(/\.\w+$/, ''), html: m.html }); }
+      else { toast(`Could not paste ${f.name || 'that file'}: only images, PDFs and text files go on the board`); continue; }
+      p = { x: p.x + 60, y: p.y + 60 }; n++;
+    }
+    return n;
+  }
+  async function pasteData({ files = [], html = '', text = '' }, at) {
+    const p = at || pastePoint(); text = text.trim();
     const clip = getClip();
-    if (clip && (!t || t === clip.text)) { pasteClip(clip, at); return; }
-    if (!t) { toast('Nothing to paste'); return; }
-    const p = at || viewCenter();
-    if (/^(https?:\/\/|www\.)\S+$/i.test(t)) addLink(t, p.x, p.y); else addItem('text', p.x, p.y, { html: escH(t).replace(/\n/g, '<br>') });
+    if (clip && text && text === clip.text) { pasteClip(clip, at || (lastPt ? p : null)); return; }
+    if (files.length) { await pasteFiles(files, p); return; }
+    if (/^(https?:\/\/|www\.)\S+$/i.test(text)) { addLink(text, p.x, p.y); return; }
+    const rich = html ? cleanHtml(html) : '';
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (rich && (/<(p|h3|h4|ul|ol|blockquote)\b/.test(rich) && (rich.match(/<(p|h3|h4|li|blockquote)\b/g) || []).length > 1 || words > 60)) {
+      // A passage: a sheet, titled by its heading if it starts with one.
+      const d = document.createElement('div'); d.innerHTML = rich;
+      const h = d.firstElementChild?.matches('h3') ? d.firstElementChild : null, title = h ? h.textContent.trim() : '';
+      h?.remove();
+      addItem('sheet', p.x, p.y, { title, html: d.innerHTML }); return;
+    }
+    if (!text) { toast('Nothing to paste'); return; }
+    if (words > 60) { const m = mdToHtml(text); addItem('sheet', p.x, p.y, { title: m.title || '', html: m.html }); return; }
+    const inline = rich ? rich.replace(/^<p>|<\/p>$/g, '').replace(/<\/p>\s*<p>/g, '<br>') : escH(text).replace(/\n/g, '<br>');
+    addItem('text', p.x, p.y, { html: inline });
+  }
+  async function pasteAny(at) {
+    const data = { files: [], html: '', text: '' };
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const img = item.types.find((t) => t.startsWith('image/'));
+        if (img) data.files.push(new File([await item.getType(img)], 'image.png', { type: img }));
+        if (item.types.includes('text/html')) data.html = await (await item.getType('text/html')).text();
+        if (item.types.includes('text/plain')) data.text = await (await item.getType('text/plain')).text();
+      }
+    } catch { try { data.text = await navigator.clipboard.readText(); } catch {} }
+    if (!data.files.length && !data.text.trim() && !data.html) { const clip = getClip(); if (clip) { pasteClip(clip, at); return; } toast('Nothing to paste. Your browser may need permission to read the clipboard: try Ctrl+V instead.'); return; }
+    await pasteData(data, at);
   }
   function restack(ids, front) {
     const its = ids.map(byId).filter(Boolean); if (!its.length) return;
@@ -1714,6 +1791,8 @@ export function initDesk(ctx) {
 
   /* ------------------------------------------------------------ sidebar library */
   let libTab = 'note', lib = [], posts = [];
+  // Long notes in the library stay minimized unless opened; the choice is remembered.
+  const libOpen = new Set((() => { try { return JSON.parse(localStorage.getItem('na-lib-open') || '[]'); } catch { return []; } })());
   document.querySelectorAll('#deskTabs button').forEach((b) => b.onclick = () => { libTab = b.dataset.t; document.querySelectorAll('#deskTabs button').forEach((x) => x.classList.toggle('on', x === b)); renderLib(); });
   async function loadLib() {
     const [{ data: s }, { data: p }] = await Promise.all([
@@ -1740,7 +1819,8 @@ export function initDesk(ctx) {
       if (r.kind === 'link') return `<div class="lib-it lnk" data-id="${r.id}"><span class="k">${escH(r.source || 'Link')}</span><b>${escH(r.title || r.url)}</b><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
       if (r.kind === 'post') return `<div class="lib-it post" data-id="${r.id}"><span class="k">${r.status === 'published' ? 'Published' : 'Draft'}</span><b>${escH(r.title || 'Untitled')}</b>${r.subtitle ? `<i>${escH(r.subtitle)}</i>` : ''}</div>`;
       if (r.kind === 'freewrite') return `<div class="lib-it fw" data-id="${r.id}"><span class="k">Freewrite · ${new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><b>${escH(r.title || 'Untitled')}</b><i>${escH(mdToHtml(r.body).html.replace(/<[^>]+>/g, ' ').slice(0, 110))}…</i><button class="x" data-del="${r.id}" title="Remove from library">×</button></div>`;
-      return `<div class="lib-it ${r.kind}" data-id="${r.id}" style="${r.kind === 'note' ? `--nc:${NOTE_COLORS[r.color || 'yellow']}` : ''}">${r.kind === 'quote' ? '<span class="k">Quote</span>' : ''}<p>${escH(r.body).replace(/\n/g, '<br>')}</p>${r.source ? `<span class="src">— ${escH(r.source)}</span>` : ''}<button class="x" data-del="${r.id}" title="Delete">×</button></div>`;
+      const long = (r.body || '').length > 180 || (r.body || '').split('\n').length > 4, open = libOpen.has(r.id);
+      return `<div class="lib-it ${r.kind}${long ? ' long' : ''}${long && !open ? ' shut' : ''}" data-id="${r.id}" style="${r.kind === 'note' ? `--nc:${NOTE_COLORS[r.color || 'yellow']}` : ''}">${r.kind === 'quote' ? '<span class="k">Quote</span>' : ''}<p>${escH(r.body).replace(/\n/g, '<br>')}</p>${r.source ? `<span class="src">— ${escH(r.source)}</span>` : ''}${long ? `<button class="fold" data-fold="${r.id}" title="${open ? 'Minimize' : 'Show the whole note'}">${open ? 'Minimize ▴' : 'Show all ▾'}</button>` : ''}<button class="x" data-del="${r.id}" title="Delete">×</button></div>`;
     }).join('') : `<p class="lib-empty">${{ note: 'No notes yet. Write one above.', freewrite: 'No Freewrite drafts yet.', files: 'No images or PDFs yet.', link: 'No links yet. Paste one above.', post: 'No posts yet.' }[libTab]}</p>`;
     box.querySelectorAll('.lib-it').forEach((el) => {
       const r = rows.find((x) => x.id === el.dataset.id);
@@ -1762,6 +1842,17 @@ export function initDesk(ctx) {
           x ? { label: 'Remove from library', danger: true, act: () => x.click() } : null,
         ]);
       });
+    });
+    box.querySelectorAll('[data-fold]').forEach((b) => {
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.onclick = (e) => {
+        e.stopPropagation(); const id = b.dataset.fold, el = b.closest('.lib-it');
+        if (libOpen.has(id)) libOpen.delete(id); else libOpen.add(id);
+        try { localStorage.setItem('na-lib-open', JSON.stringify([...libOpen].slice(-200))); } catch {}
+        const open = libOpen.has(id); el.classList.toggle('shut', !open);
+        b.textContent = open ? 'Minimize ▴' : 'Show all ▾'; b.title = open ? 'Minimize' : 'Show the whole note';
+        if (!open) el.scrollIntoView({ block: 'nearest' });
+      };
     });
     box.querySelectorAll('[data-del]').forEach((b) => b.onclick = async (e) => {
       e.stopPropagation();
@@ -2150,13 +2241,11 @@ export function initDesk(ctx) {
   }
   // Paste a link (or plain text) straight onto the board.
   document.addEventListener('paste', (e) => {
-    if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea')) return;
-    const t = (e.clipboardData?.getData('text/plain') || '').trim();
-    const clip = getClip(); if (clip && t === clip.text) { e.preventDefault(); pasteClip(clip); return; }
-    if (!t) return;
-    e.preventDefault(); const c = viewCenter();
-    if (/^(https?:\/\/|www\.)\S+$/i.test(t)) addLink(t, c.x, c.y);
-    else addItem('text', c.x - 150, c.y, { html: escH(t).replace(/\n/g, '<br>') });
+    if (!board || !$('v-desk').classList.contains('on') || e.target.closest?.('[contenteditable], input, textarea, dialog')) return;
+    const cd = e.clipboardData; if (!cd) return;
+    const files = [...cd.files], html = cd.getData('text/html'), text = cd.getData('text/plain');
+    if (!files.length && !html && !text.trim()) return;
+    e.preventDefault(); pasteData({ files, html, text });
   });
 
   /* ------------------------------------------------------------ tabs */

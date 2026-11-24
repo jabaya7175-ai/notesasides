@@ -715,3 +715,8 @@ body.previewing #preview{display:block}
 .cm-l{flex:1;overflow:hidden;text-overflow:ellipsis}
 .cm-k{margin-left:22px;font:12.5px/1 system-ui,sans-serif;opacity:.55;letter-spacing:.02em}
 .cm-it:hover .cm-k{opacity:.85}
+
+/* ---------- long notes in the library: minimized to a few lines ---------- */
+.lib-it.long.shut p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.lib-it .fold{all:unset;cursor:pointer;display:block;margin-top:6px;font-size:13px;font-style:italic;opacity:.65}
+.lib-it .fold:hover{opacity:1;text-decoration:underline}
